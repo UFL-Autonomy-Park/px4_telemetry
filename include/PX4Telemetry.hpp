@@ -19,6 +19,7 @@
 #include <sensor_msgs/msg/battery_state.hpp>
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
 #include <sensor_msgs/msg/joy.hpp>
+#include <std_msgs/msg/bool.hpp>
 
 //Mavros message and service types 
 #include <mavros_msgs/msg/altitude.hpp>
@@ -27,6 +28,8 @@
 #include <mavros_msgs/srv/command_bool.hpp>
 #include <mavros_msgs/srv/command_tol.hpp>
 #include <mavros_msgs/srv/set_mode.hpp>
+
+#include "fleet_manager/srv/connect_agent.hpp"
 
 class PX4Telemetry : public rclcpp::Node {
 private:
@@ -42,11 +45,15 @@ private:
 
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr apark_pose_publisher_;
     rclcpp::Publisher<geographic_msgs::msg::GeoPointStamped>::SharedPtr gp_origin_publisher_;
+    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr heartbeat_publisher_;
+
+    rclcpp::TimerBase::SharedPtr heartbeat_timer_;
 
     //Declare service clients for mode, arming and takeoff/landing
     rclcpp::Client<mavros_msgs::srv::SetMode>::SharedPtr set_mode_client_;
     rclcpp::Client<mavros_msgs::srv::CommandBool>::SharedPtr arm_client_;
     rclcpp::Client<mavros_msgs::srv::CommandTOL>::SharedPtr takeoff_client_, land_client_;
+    rclcpp::Client<fleet_manager::srv::ConnectAgent>::SharedPtr connect_agent_client_;
 
     geometry_msgs::msg::PoseStamped apark_pose_;
     std::unique_ptr<tf2_ros::TransformBroadcaster> apark_tf_broadcaster_;
@@ -123,7 +130,10 @@ private:
     void altitude_callback(const mavros_msgs::msg::Altitude::SharedPtr msg);
     void global_lpos_callback(const nav_msgs::msg::Odometry::SharedPtr msg);
     void global_gpos_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg);
-    
+
+
+    void send_connection_request();
+    bool send_heartbeat();
     int get_button(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Button &button);
     void send_arming_request(bool arm);
     void send_tol_request(bool takeoff);
@@ -133,10 +143,12 @@ private:
     void offboard_mode_response_callback(rclcpp::Client<mavros_msgs::srv::SetMode>::SharedFuture future);
     void arm_response_callback(rclcpp::Client<mavros_msgs::srv::CommandBool>::SharedFuture future);
     void tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTOL>::SharedFuture future);
+    void connect_agent_response_callback(rclcpp::Client<fleet_manager::srv::ConnectAgent>::SharedFuture future);
 
     //Utility functions
     geographic_msgs::msg::GeoPose apark_to_global(const geometry_msgs::msg::Pose &apark_pose);
     double quat_to_yaw(geometry_msgs::msg::Quaternion quat);
+
 
 public:
     PX4Telemetry();
