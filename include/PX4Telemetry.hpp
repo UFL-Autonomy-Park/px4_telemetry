@@ -19,7 +19,6 @@
 #include <sensor_msgs/msg/battery_state.hpp>
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
 #include <sensor_msgs/msg/joy.hpp>
-#include <std_msgs/msg/bool.hpp>
 
 //Mavros message and service types 
 #include <mavros_msgs/msg/altitude.hpp>
@@ -30,6 +29,8 @@
 #include <mavros_msgs/srv/set_mode.hpp>
 
 #include "fleet_manager/srv/connect_agent.hpp"
+#include "fleet_manager/msg/heartbeat.hpp"
+
 
 class PX4Telemetry : public rclcpp::Node {
 private:
@@ -45,9 +46,14 @@ private:
 
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr apark_pose_publisher_;
     rclcpp::Publisher<geographic_msgs::msg::GeoPointStamped>::SharedPtr gp_origin_publisher_;
-    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr heartbeat_publisher_;
+    rclcpp::Publisher<fleet_manager::msg::Heartbeat>::SharedPtr heartbeat_publisher_;
 
+    // heartbeat shit
     rclcpp::TimerBase::SharedPtr heartbeat_timer_;
+    std::chrono::duration<double> heartbeat_timeout_;
+    rclcpp::Time last_heartbeat_time_;
+    rclcpp::Subscription<fleet_manager::msg::Heartbeat>::SharedPtr fleet_manager_heartbeat_sub_;
+    void fleet_manager_heartbeat_callback_(const fleet_manager::msg::Heartbeat::SharedPtr msg);
 
     //Declare service clients for mode, arming and takeoff/landing
     rclcpp::Client<mavros_msgs::srv::SetMode>::SharedPtr set_mode_client_;
@@ -133,7 +139,7 @@ private:
 
 
     void send_connection_request();
-    bool send_heartbeat();
+    void send_heartbeat();
     int get_button(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Button &button);
     void send_arming_request(bool arm);
     void send_tol_request(bool takeoff);

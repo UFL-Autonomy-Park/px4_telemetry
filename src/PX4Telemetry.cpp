@@ -75,6 +75,7 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
 
     //Global position origin publisher
     gp_origin_publisher_ = this->create_publisher<geographic_msgs::msg::GeoPointStamped>("global_position/set_gp_origin", 1);
+    heartbeat_publisher_ = this->create_publisher<fleet_manager::msg::Heartbeat>("heartbeat", 1);
     
     set_mode_client_ = this->create_client<mavros_msgs::srv::SetMode>("set_mode");
     arm_client_ = this->create_client<mavros_msgs::srv::CommandBool>("cmd/arming");
@@ -502,6 +503,17 @@ void PX4Telemetry::connect_agent_response_callback(rclcpp::Client<fleet_manager:
 
     if (response->success) {
         RCLCPP_INFO(this->get_logger(), "Successfully connected to fleet manager.");
+        
+        // create subscription to fleet manager heartbeat
+        fleet_manager_heartbeat_sub_ = this->create_subscription<fleet_manager::msg::Heartbeat>("/fleet_manager/heartbeat", 10, std::bind(&PX4Telemetry::fleet_manager_heartbeat_callback_, this, _1));
+        
+        // start sending heartbeats
+        heartbeat_timer_ = this->create_wall_timer(0.1s, std::bind(&PX4Telemetry::send_heartbeat, this));
+        
+        // start timer to check for timeout from fleet manager
+        heartbeat_timeout_ = 5.0s;
+        last_heartbeat_time_ = this->get_clock()->now();
+        
     } else {
         RCLCPP_ERROR(this->get_logger(), "Failed to connect to fleet manager.");
     }
@@ -566,4 +578,23 @@ void PX4Telemetry::send_connection_request() {
     request->battery_level = battery_voltage_;
 
     auto connect_result = connect_agent_client_->async_send_request(request, std::bind(&PX4Telemetry::connect_agent_response_callback, this, _1));
+}
+
+void PX4Telemetry::send_heartbeat() {
+    auto msg = fleet_manager::msg::Heartbeat();
+    msg.agent_name = px4_id_;
+    msg.battery_level = battery_voltage_;
+    msg.timestamp = this->get_clock()->now().nanoseconds();
+    heartbeat_publisher_->publish(msg);
+
+    // check for fleet manager timeout 
+    rclcpp::Time now = this->get_clock()->now();
+    if ((now - last_heartbeat_time_).seconds() > heartbeat_timeout_.count()) {
+        RCLCPP_ERROR(this->get_logger(), "No heartbeat response from fleet manager, SHUTTING DOWN, ADD PROTOCOL HERE");
+        rclcpp::shutdown();
+    }
+}
+
+void PX4Telemetry::fleet_manager_heartbeat_callback_(const fleet_manager::msg::Heartbeat::SharedPtr msg) {
+    last_heartbeat_time_ = this->get_clock()->now();
 }
