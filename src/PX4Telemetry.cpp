@@ -510,8 +510,7 @@ void PX4Telemetry::connect_agent_response_callback(rclcpp::Client<fleet_manager:
         // start sending heartbeats
         heartbeat_timer_ = this->create_wall_timer(0.1s, std::bind(&PX4Telemetry::send_heartbeat, this));
         
-        // start timer to check for timeout from fleet manager
-        heartbeat_timeout_ = 5.0s;
+        // initialize first heartbeat from fleet manager
         last_heartbeat_time_ = this->get_clock()->now();
         
     } else {
@@ -551,9 +550,6 @@ geographic_msgs::msg::GeoPose PX4Telemetry::apark_to_global(const geometry_msgs:
     //Convert UTM easting/northing to lat/long
     geographic_msgs::msg::GeoPoint global_pos = geodesy::toMsg(utm_pos);
 
-    //RCLCPP_WARN(this->get_logger(), "UTM Easting=%.8f, Northing=%.8f", utm_pos.easting, utm_pos.northing);
-    //RCLCPP_WARN(this->get_logger(), "GPS Lat=%.8f, Long=%.8f\n", global_pos.latitude, global_pos.longitude);
-
     //Convert AMSL altitude to ellipsoidal
     // double geoid_height = GeographicLib::Geoid::GEOIDTOELLIPSOID * (*egm96_5_)(global_pos.latitude, global_pos.longitude);
 
@@ -572,6 +568,7 @@ geographic_msgs::msg::GeoPose PX4Telemetry::apark_to_global(const geometry_msgs:
     return global_pose;
 }
 
+// service call to connect with fleet manager
 void PX4Telemetry::send_connection_request() {
     auto request = std::make_shared<fleet_manager::srv::ConnectAgent::Request>();
     request->agent_name = px4_id_;
@@ -589,7 +586,7 @@ void PX4Telemetry::send_heartbeat() {
 
     // check for fleet manager timeout 
     rclcpp::Time now = this->get_clock()->now();
-    if ((now - last_heartbeat_time_).seconds() > heartbeat_timeout_.count()) {
+    if ((now - last_heartbeat_time_).seconds() > heartbeat_timeout_.seconds()) {
         RCLCPP_ERROR(this->get_logger(), "No heartbeat response from fleet manager, SHUTTING DOWN, ADD PROTOCOL HERE");
         rclcpp::shutdown();
     }

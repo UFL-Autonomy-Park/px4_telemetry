@@ -50,7 +50,7 @@ private:
 
     // heartbeat shit
     rclcpp::TimerBase::SharedPtr heartbeat_timer_;
-    std::chrono::duration<double> heartbeat_timeout_;
+    rclcpp::Time heartbeat_timeout_{int64_t(5*1e8)}; // 0.5 seconds
     rclcpp::Time last_heartbeat_time_;
     rclcpp::Subscription<fleet_manager::msg::Heartbeat>::SharedPtr fleet_manager_heartbeat_sub_;
     void fleet_manager_heartbeat_callback_(const fleet_manager::msg::Heartbeat::SharedPtr msg);
