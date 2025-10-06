@@ -93,53 +93,53 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
         RCLCPP_INFO(this->get_logger(), "Connect agent service not available, waiting again...");
     }
     // Wait for set mode service
-    while (!set_mode_client_->wait_for_service(1s)) {
-        if (!rclcpp::ok()) {
-            RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for mode service. Exiting.");
-            rclcpp::shutdown();
-            return;
-        }
-        RCLCPP_INFO(this->get_logger(), "Mode service not available, waiting again...");
-    }
+    // while (!set_mode_client_->wait_for_service(1s)) {
+    //     if (!rclcpp::ok()) {
+    //         RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for mode service. Exiting.");
+    //         rclcpp::shutdown();
+    //         return;
+    //     }
+    //     RCLCPP_INFO(this->get_logger(), "Mode service not available, waiting again...");
+    // }
 
-    //Wait for arm service
-    while (!arm_client_->wait_for_service(1s)) {
-        if (!rclcpp::ok()) {
-            RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for arming service. Exiting.");
-            rclcpp::shutdown();
-            return;
-        }
-        RCLCPP_INFO(this->get_logger(), "Arming service not available, waiting again...");
-    }
+    // //Wait for arm service
+    // while (!arm_client_->wait_for_service(1s)) {
+    //     if (!rclcpp::ok()) {
+    //         RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for arming service. Exiting.");
+    //         rclcpp::shutdown();
+    //         return;
+    //     }
+    //     RCLCPP_INFO(this->get_logger(), "Arming service not available, waiting again...");
+    // }
 
-    //Wait for TOL service
-    while (!takeoff_client_->wait_for_service(1s)) {
-        if (!rclcpp::ok()) {
-            RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for TOL service. Exiting.");
-            rclcpp::shutdown();
-            return;
-        }
-        RCLCPP_INFO(this->get_logger(), "TOL service not available, waiting again...");
-    }
+    // //Wait for TOL service
+    // while (!takeoff_client_->wait_for_service(1s)) {
+    //     if (!rclcpp::ok()) {
+    //         RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for TOL service. Exiting.");
+    //         rclcpp::shutdown();
+    //         return;
+    //     }
+    //     RCLCPP_INFO(this->get_logger(), "TOL service not available, waiting again...");
+    // }
 
-    joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&PX4Telemetry::joy_callback, this, _1));
+    // joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&PX4Telemetry::joy_callback, this, _1));
 
-    //Set mavros QOS to keep last
-    auto sub_qos = rclcpp::QoS(rclcpp::KeepLast(1), rmw_qos_profile_default);
-    sub_qos.best_effort();
-    sub_qos.durability_volatile();
+    // //Set mavros QOS to keep last
+    // auto sub_qos = rclcpp::QoS(rclcpp::KeepLast(1), rmw_qos_profile_default);
+    // sub_qos.best_effort();
+    // sub_qos.durability_volatile();
 
-    //Mavros subscribers
-    state_sub_ = this->create_subscription<mavros_msgs::msg::State>("state", sub_qos, std::bind(&PX4Telemetry::state_callback, this, _1));
-    ext_state_sub_ = this->create_subscription<mavros_msgs::msg::ExtendedState>("extended_state", sub_qos, std::bind(&PX4Telemetry::ext_state_callback, this, _1));
-    battery_sub_ = this->create_subscription<sensor_msgs::msg::BatteryState>("battery", sub_qos, std::bind(&PX4Telemetry::battery_callback, this, _1));
+    // //Mavros subscribers
+    // state_sub_ = this->create_subscription<mavros_msgs::msg::State>("state", sub_qos, std::bind(&PX4Telemetry::state_callback, this, _1));
+    // ext_state_sub_ = this->create_subscription<mavros_msgs::msg::ExtendedState>("extended_state", sub_qos, std::bind(&PX4Telemetry::ext_state_callback, this, _1));
+    // battery_sub_ = this->create_subscription<sensor_msgs::msg::BatteryState>("battery", sub_qos, std::bind(&PX4Telemetry::battery_callback, this, _1));
 
-    altitude_sub_ = this->create_subscription<mavros_msgs::msg::Altitude>("altitude", sub_qos, std::bind(&PX4Telemetry::altitude_callback, this, _1));
-    global_lpos_sub_ = this->create_subscription<nav_msgs::msg::Odometry>("global_position/local", sub_qos, std::bind(&PX4Telemetry::global_lpos_callback, this, _1));
-    global_gpos_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>("global_position/global", sub_qos, std::bind(&PX4Telemetry::global_gpos_callback, this, _1));
+    // altitude_sub_ = this->create_subscription<mavros_msgs::msg::Altitude>("altitude", sub_qos, std::bind(&PX4Telemetry::altitude_callback, this, _1));
+    // global_lpos_sub_ = this->create_subscription<nav_msgs::msg::Odometry>("global_position/local", sub_qos, std::bind(&PX4Telemetry::global_lpos_callback, this, _1));
+    // global_gpos_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>("global_position/global", sub_qos, std::bind(&PX4Telemetry::global_gpos_callback, this, _1));
 
-    loiter_str_ = std::string("AUTO.LOITER");
-    offboard_str_ = std::string("OFFBOARD");
+    // loiter_str_ = std::string("AUTO.LOITER");
+    // offboard_str_ = std::string("OFFBOARD");
 
     send_connection_request();
 
