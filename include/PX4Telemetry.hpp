@@ -119,7 +119,8 @@ private:
     LandedState landed_state_;
 
     bool landing_requested_;
-    std::string loiter_str_, offboard_str_;
+    std::string loiter_str_{"AUTO.LOITER"};
+    std::string offboard_str_{"OFFBOARD"};
     double altitude_amsl_;
     double battery_voltage_;
 
@@ -154,6 +155,12 @@ private:
     //Utility functions
     geographic_msgs::msg::GeoPose apark_to_global(const geometry_msgs::msg::Pose &apark_pose);
     double quat_to_yaw(geometry_msgs::msg::Quaternion quat);
+
+    // init functions
+    void init_parameters();
+    void init_publishers();
+    void init_subscribers();
+    void init_service_clients();
 
 
 public:

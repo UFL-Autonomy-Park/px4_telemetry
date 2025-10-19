@@ -13,10 +13,32 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
     //Get my namespace (remove the slash with substr)
     px4_id_ = std::string(this->get_namespace()).substr(1);
 
+
+    init_params();
+
+    init_publishers();
+
+    init_subscribers();
+
+    init_service_clients();
+
+    send_connection_request();
+
+    //Convert park transform to quaternion
+    q_utm_to_apark_.setRPY(0, 0, origin_r_);
+    q_apark_to_utm_.setRPY(0, 0, -origin_r_);
+
+    //Initialize egm96 (WGS-84) ellipsoid 
+    egm96_5_ = std::make_shared<GeographicLib::Geoid>("egm96-5", "", true, true);
+
+    RCLCPP_INFO(this->get_logger(), "Astro Telemetry Initialized.");
+}
+
+PX4Telemetry::init_parameters() {
     //Temporary string storage for UTM band
     std::string utm_band_str;
 
-    //Get park geodesy parameters
+    // geodesy parameters
     this->declare_parameter("origin_x", 0.0);
     this->declare_parameter("origin_y", 0.0);
     this->declare_parameter("origin_r", 0.0);
@@ -36,47 +58,52 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
         rclcpp::shutdown();
     }
 
-    //Joy button config
-    this->declare_parameter("arm_button", -1);
-    this->declare_parameter("disarm_button", -1);
-    this->declare_parameter("control_button", -1);
-    this->declare_parameter("follow_setpoint_button", -1);
-    this->get_parameter("arm_button", buttons_.arm.button);
-    this->get_parameter("disarm_button", buttons_.disarm.button);
-    this->get_parameter("control_button", buttons_.control.button);
-    this->get_parameter("follow_setpoint_button", buttons_.follow.button);
-
-    RCLCPP_INFO(this->get_logger(), "Loaded joy parameters:\nArm: %d, Disarm: %d, Control: %d", buttons_.arm.button, buttons_.disarm.button, buttons_.control.button);
-
-    //Get simulation mode parameter
     this->declare_parameter("sim_mode", false);
     this->get_parameter("sim_mode", sim_mode_);
     if (sim_mode_) {
         RCLCPP_WARN(this->get_logger(), "Simulation mode enabled.");
     }
 
-    //Convert park transform to quaternion
-    q_utm_to_apark_.setRPY(0, 0, origin_r_);
+    // //Joy button config
+    // this->declare_parameter("arm_button", -1);
+    // this->declare_parameter("disarm_button", -1);
+    // this->declare_parameter("control_button", -1);
+    // this->declare_parameter("follow_setpoint_button", -1);
+    // this->get_parameter("arm_button", buttons_.arm.button);
+    // this->get_parameter("disarm_button", buttons_.disarm.button);
+    // this->get_parameter("control_button", buttons_.control.button);
+    // this->get_parameter("follow_setpoint_button", buttons_.follow.button);
+    // RCLCPP_INFO(this->get_logger(), "Loaded joy parameters:\nArm: %d, Disarm: %d, Control: %d", buttons_.arm.button, buttons_.disarm.button, buttons_.control.button);
+}
 
-    //Convert park transform to quaternion
-    q_apark_to_utm_.setRPY(0, 0, -origin_r_);
-
-    //Initialize egm96 (WGS-84) ellipsoid 
-    egm96_5_ = std::make_shared<GeographicLib::Geoid>("egm96-5", "", true, true);
+PX4Telemetry::init_publishers() {
+    apark_pose_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("autonomy_park/pose", 1);
+    gp_origin_publisher_ = this->create_publisher<geographic_msgs::msg::GeoPointStamped>("global_position/set_gp_origin", 1);
+    heartbeat_publisher_ = this->create_publisher<fleet_manager::msg::Heartbeat>("heartbeat", 1);
 
     //Autonomy park tf broadcaster
     apark_tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
     apark_tf_.header.frame_id = "autonomy_park";
     apark_tf_.child_frame_id = px4_id_;
+}
 
-    //Autonomy park pose publisher
-    apark_pose_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("autonomy_park/pose", 1);
-    apark_pose_.header.frame_id = "autonomy_park";
+PX4Telemetry::init_subscribers() {
+    //Set mavros QOS to keep last
+    auto sub_qos = rclcpp::QoS(rclcpp::KeepLast(1), rmw_qos_profile_default);
+    sub_qos.best_effort();
+    sub_qos.durability_volatile();
 
-    //Global position origin publisher
-    gp_origin_publisher_ = this->create_publisher<geographic_msgs::msg::GeoPointStamped>("global_position/set_gp_origin", 1);
-    heartbeat_publisher_ = this->create_publisher<fleet_manager::msg::Heartbeat>("heartbeat", 1);
-    
+    //Mavros subscribers
+    state_sub_ = this->create_subscription<mavros_msgs::msg::State>("state", sub_qos, std::bind(&PX4Telemetry::state_callback, this, _1));
+    ext_state_sub_ = this->create_subscription<mavros_msgs::msg::ExtendedState>("extended_state", sub_qos, std::bind(&PX4Telemetry::ext_state_callback, this, _1));
+    battery_sub_ = this->create_subscription<sensor_msgs::msg::BatteryState>("battery", sub_qos, std::bind(&PX4Telemetry::battery_callback, this, _1));
+    joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&PX4Telemetry::joy_callback, this, _1));
+    altitude_sub_ = this->create_subscription<mavros_msgs::msg::Altitude>("altitude", sub_qos, std::bind(&PX4Telemetry::altitude_callback, this, _1));
+    global_lpos_sub_ = this->create_subscription<nav_msgs::msg::Odometry>("global_position/local", sub_qos, std::bind(&PX4Telemetry::global_lpos_callback, this, _1));
+    global_gpos_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>("global_position/global", sub_qos, std::bind(&PX4Telemetry::global_gpos_callback, this, _1));
+}
+
+PX4Telemetry::init_service_clients() {
     set_mode_client_ = this->create_client<mavros_msgs::srv::SetMode>("set_mode");
     arm_client_ = this->create_client<mavros_msgs::srv::CommandBool>("cmd/arming");
     takeoff_client_ = this->create_client<mavros_msgs::srv::CommandTOL>("cmd/takeoff");
@@ -92,59 +119,38 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
         }
         RCLCPP_INFO(this->get_logger(), "Connect agent service not available, waiting again...");
     }
-    // Wait for set mode service
-    // while (!set_mode_client_->wait_for_service(1s)) {
-    //     if (!rclcpp::ok()) {
-    //         RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for mode service. Exiting.");
-    //         rclcpp::shutdown();
-    //         return;
-    //     }
-    //     RCLCPP_INFO(this->get_logger(), "Mode service not available, waiting again...");
-    // }
 
-    // //Wait for arm service
-    // while (!arm_client_->wait_for_service(1s)) {
-    //     if (!rclcpp::ok()) {
-    //         RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for arming service. Exiting.");
-    //         rclcpp::shutdown();
-    //         return;
-    //     }
-    //     RCLCPP_INFO(this->get_logger(), "Arming service not available, waiting again...");
-    // }
+    //Wait for set mode service
+    while (!set_mode_client_->wait_for_service(1s)) {
+        if (!rclcpp::ok()) {
+            RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for mode service. Exiting.");
+            rclcpp::shutdown();
+            return;
+        }
+        RCLCPP_INFO(this->get_logger(), "Mode service not available, waiting again...");
+    }
 
-    // //Wait for TOL service
-    // while (!takeoff_client_->wait_for_service(1s)) {
-    //     if (!rclcpp::ok()) {
-    //         RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for TOL service. Exiting.");
-    //         rclcpp::shutdown();
-    //         return;
-    //     }
-    //     RCLCPP_INFO(this->get_logger(), "TOL service not available, waiting again...");
-    // }
+    //Wait for arm service
+    while (!arm_client_->wait_for_service(1s)) {
+        if (!rclcpp::ok()) {
+            RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for arming service. Exiting.");
+            rclcpp::shutdown();
+            return;
+        }
+        RCLCPP_INFO(this->get_logger(), "Arming service not available, waiting again...");
+    }
 
-    // joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&PX4Telemetry::joy_callback, this, _1));
-
-    // //Set mavros QOS to keep last
-    // auto sub_qos = rclcpp::QoS(rclcpp::KeepLast(1), rmw_qos_profile_default);
-    // sub_qos.best_effort();
-    // sub_qos.durability_volatile();
-
-    // //Mavros subscribers
-    // state_sub_ = this->create_subscription<mavros_msgs::msg::State>("state", sub_qos, std::bind(&PX4Telemetry::state_callback, this, _1));
-    // ext_state_sub_ = this->create_subscription<mavros_msgs::msg::ExtendedState>("extended_state", sub_qos, std::bind(&PX4Telemetry::ext_state_callback, this, _1));
-    // battery_sub_ = this->create_subscription<sensor_msgs::msg::BatteryState>("battery", sub_qos, std::bind(&PX4Telemetry::battery_callback, this, _1));
-
-    // altitude_sub_ = this->create_subscription<mavros_msgs::msg::Altitude>("altitude", sub_qos, std::bind(&PX4Telemetry::altitude_callback, this, _1));
-    // global_lpos_sub_ = this->create_subscription<nav_msgs::msg::Odometry>("global_position/local", sub_qos, std::bind(&PX4Telemetry::global_lpos_callback, this, _1));
-    // global_gpos_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>("global_position/global", sub_qos, std::bind(&PX4Telemetry::global_gpos_callback, this, _1));
-
-    // loiter_str_ = std::string("AUTO.LOITER");
-    // offboard_str_ = std::string("OFFBOARD");
-
-    send_connection_request();
-
-    RCLCPP_INFO(this->get_logger(), "Astro Telemetry Initialized.");
+    //Wait for TOL service
+    while (!takeoff_client_->wait_for_service(1s)) {
+        if (!rclcpp::ok()) {
+            RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for TOL service. Exiting.");
+            rclcpp::shutdown();
+            return;
+        }
+        RCLCPP_INFO(this->get_logger(), "TOL service not available, waiting again...");
+    }
 }
+
 
 void PX4Telemetry::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
     //Prevent operation until telemetry is initialized
@@ -368,6 +374,7 @@ void PX4Telemetry::global_gpos_callback(const sensor_msgs::msg::NavSatFix::Share
     // RCLCPP_WARN(this->get_logger(), "Apark Z = %.4f meters", apark_pose_.pose.position.z);
 
     //Publish pose
+    apark_pose_.header.frame_id = "autonomy_park";
     this->apark_pose_publisher_->publish(apark_pose_);
 
     //Broadcast TF
