@@ -14,7 +14,7 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
     px4_id_ = std::string(this->get_namespace()).substr(1);
 
 
-    init_params();
+    init_parameters();
 
     init_publishers();
 
@@ -34,7 +34,7 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
     RCLCPP_INFO(this->get_logger(), "Astro Telemetry Initialized.");
 }
 
-PX4Telemetry::init_parameters() {
+void PX4Telemetry::init_parameters() {
     //Temporary string storage for UTM band
     std::string utm_band_str;
 
@@ -76,7 +76,7 @@ PX4Telemetry::init_parameters() {
     // RCLCPP_INFO(this->get_logger(), "Loaded joy parameters:\nArm: %d, Disarm: %d, Control: %d", buttons_.arm.button, buttons_.disarm.button, buttons_.control.button);
 }
 
-PX4Telemetry::init_publishers() {
+void PX4Telemetry::init_publishers() {
     apark_pose_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("autonomy_park/pose", 1);
     gp_origin_publisher_ = this->create_publisher<geographic_msgs::msg::GeoPointStamped>("global_position/set_gp_origin", 1);
     heartbeat_publisher_ = this->create_publisher<fleet_manager::msg::Heartbeat>("heartbeat", 1);
@@ -87,7 +87,7 @@ PX4Telemetry::init_publishers() {
     apark_tf_.child_frame_id = px4_id_;
 }
 
-PX4Telemetry::init_subscribers() {
+void PX4Telemetry::init_subscribers() {
     //Set mavros QOS to keep last
     auto sub_qos = rclcpp::QoS(rclcpp::KeepLast(1), rmw_qos_profile_default);
     sub_qos.best_effort();
@@ -103,7 +103,7 @@ PX4Telemetry::init_subscribers() {
     global_gpos_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>("global_position/global", sub_qos, std::bind(&PX4Telemetry::global_gpos_callback, this, _1));
 }
 
-PX4Telemetry::init_service_clients() {
+void PX4Telemetry::init_service_clients() {
     set_mode_client_ = this->create_client<mavros_msgs::srv::SetMode>("set_mode");
     arm_client_ = this->create_client<mavros_msgs::srv::CommandBool>("cmd/arming");
     takeoff_client_ = this->create_client<mavros_msgs::srv::CommandTOL>("cmd/takeoff");
