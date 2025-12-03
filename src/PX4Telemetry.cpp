@@ -13,7 +13,6 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
     //Get my namespace (remove the slash with substr)
     px4_id_ = std::string(this->get_namespace()).substr(1);
 
-
     init_parameters();
 
     init_publishers();
@@ -78,6 +77,7 @@ void PX4Telemetry::init_parameters() {
 
 void PX4Telemetry::init_publishers() {
     apark_pose_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("autonomy_park/pose", 1);
+	apark_global_pose_publisher = this->create_publisher<geographic_msgs::msg::GeoPoseStamped>("autonomy_park/global_pose", 1);
     gp_origin_publisher_ = this->create_publisher<geographic_msgs::msg::GeoPointStamped>("global_position/set_gp_origin", 1);
     heartbeat_publisher_ = this->create_publisher<fleet_manager::msg::Heartbeat>("heartbeat", 1);
 
@@ -104,8 +104,7 @@ void PX4Telemetry::init_subscribers() {
 }
 
 void PX4Telemetry::init_service_clients() {
-    set_mode_client_ = this->create_client<mavros_msgs::srv::SetMode>("set_mode");
-    arm_client_ = this->create_client<mavros_msgs::srv::CommandBool>("cmd/arming");
+    set_mode_client_ = this->create_client<mavros_msgs::srv::SetMode>("set_mode"); arm_client_ = this->create_client<mavros_msgs::srv::CommandBool>("cmd/arming");
     takeoff_client_ = this->create_client<mavros_msgs::srv::CommandTOL>("cmd/takeoff");
     land_client_ = this->create_client<mavros_msgs::srv::CommandTOL>("cmd/land");
     connect_agent_client_ = this->create_client<fleet_manager::srv::ConnectAgent>("/connect_agent");
@@ -388,6 +387,12 @@ void PX4Telemetry::global_gpos_callback(const sensor_msgs::msg::NavSatFix::Share
 
     //Set initialization flag
     if (!gpos_init_) gpos_init_ = true;
+
+	// publish global pose with orientation
+	Geographic_msgs::msg::GeoPoseStamped apark_gpos;
+	apark_gpos.header.stamp = now;
+	apark_gpos.pose = apark_to_global(apark_pose_.pose);
+	apark_global_pose_publisher->publish(apark_gpos);
 }
 
 int PX4Telemetry::get_button(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Button &button) {

@@ -45,6 +45,7 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr global_gpos_sub_;
 
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr apark_pose_publisher_;
+	rclcpp::Publisher<geographic_msgs::msg::GeoPoseStamped>::SharedPtr apark_global_pose_publisher_;
     rclcpp::Publisher<geographic_msgs::msg::GeoPointStamped>::SharedPtr gp_origin_publisher_;
     rclcpp::Publisher<fleet_manager::msg::Heartbeat>::SharedPtr heartbeat_publisher_;
 
