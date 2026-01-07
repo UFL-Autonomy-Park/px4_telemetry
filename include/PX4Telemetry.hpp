@@ -28,8 +28,8 @@
 #include <mavros_msgs/srv/command_tol.hpp>
 #include <mavros_msgs/srv/set_mode.hpp>
 
-#include "fleet_manager/srv/connect_agent.hpp"
-#include "fleet_manager/msg/heartbeat.hpp"
+#include "swarm_interfaces/srv/connect_agent.hpp"
+#include "swarm_interfaces/msg/heartbeat.hpp"
 
 
 class PX4Telemetry : public rclcpp::Node {
@@ -45,22 +45,21 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr global_gpos_sub_;
 
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr apark_pose_publisher_;
-	rclcpp::Publisher<geographic_msgs::msg::GeoPoseStamped>::SharedPtr apark_global_pose_publisher_;
     rclcpp::Publisher<geographic_msgs::msg::GeoPointStamped>::SharedPtr gp_origin_publisher_;
-    rclcpp::Publisher<fleet_manager::msg::Heartbeat>::SharedPtr heartbeat_publisher_;
+    rclcpp::Publisher<swarm_interfaces::msg::Heartbeat>::SharedPtr heartbeat_publisher_;
 
     // heartbeat shit
     rclcpp::TimerBase::SharedPtr heartbeat_timer_;
-    rclcpp::Time heartbeat_timeout_{int64_t(5*1e8)}; // 0.5 seconds
+    rclcpp::Time heartbeat_timeout_{int64_t(5*1e9)}; // 0.5 seconds
     rclcpp::Time last_heartbeat_time_;
-    rclcpp::Subscription<fleet_manager::msg::Heartbeat>::SharedPtr fleet_manager_heartbeat_sub_;
-    void fleet_manager_heartbeat_callback_(const fleet_manager::msg::Heartbeat::SharedPtr msg);
+    rclcpp::Subscription<swarm_interfaces::msg::Heartbeat>::SharedPtr fleet_manager_heartbeat_sub_;
+    void fleet_manager_heartbeat_callback_(const swarm_interfaces::msg::Heartbeat::SharedPtr msg);
 
     //Declare service clients for mode, arming and takeoff/landing
     rclcpp::Client<mavros_msgs::srv::SetMode>::SharedPtr set_mode_client_;
     rclcpp::Client<mavros_msgs::srv::CommandBool>::SharedPtr arm_client_;
     rclcpp::Client<mavros_msgs::srv::CommandTOL>::SharedPtr takeoff_client_, land_client_;
-    rclcpp::Client<fleet_manager::srv::ConnectAgent>::SharedPtr connect_agent_client_;
+    rclcpp::Client<swarm_interfaces::srv::ConnectAgent>::SharedPtr connect_agent_client_;
 
     geometry_msgs::msg::PoseStamped apark_pose_;
     std::unique_ptr<tf2_ros::TransformBroadcaster> apark_tf_broadcaster_;
@@ -151,7 +150,7 @@ private:
     void offboard_mode_response_callback(rclcpp::Client<mavros_msgs::srv::SetMode>::SharedFuture future);
     void arm_response_callback(rclcpp::Client<mavros_msgs::srv::CommandBool>::SharedFuture future);
     void tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTOL>::SharedFuture future);
-    void connect_agent_response_callback(rclcpp::Client<fleet_manager::srv::ConnectAgent>::SharedFuture future);
+    void connect_agent_response_callback(rclcpp::Client<swarm_interfaces::srv::ConnectAgent>::SharedFuture future);
 
     //Utility functions
     geographic_msgs::msg::GeoPose apark_to_global(const geometry_msgs::msg::Pose &apark_pose);

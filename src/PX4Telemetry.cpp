@@ -77,9 +77,8 @@ void PX4Telemetry::init_parameters() {
 
 void PX4Telemetry::init_publishers() {
     apark_pose_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("autonomy_park/pose", 1);
-	apark_global_pose_publisher = this->create_publisher<geographic_msgs::msg::GeoPoseStamped>("autonomy_park/global_pose", 1);
     gp_origin_publisher_ = this->create_publisher<geographic_msgs::msg::GeoPointStamped>("global_position/set_gp_origin", 1);
-    heartbeat_publisher_ = this->create_publisher<fleet_manager::msg::Heartbeat>("heartbeat", 1);
+    heartbeat_publisher_ = this->create_publisher<swarm_interfaces::msg::Heartbeat>("heartbeat", 1);
 
     //Autonomy park tf broadcaster
     apark_tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
@@ -97,17 +96,18 @@ void PX4Telemetry::init_subscribers() {
     state_sub_ = this->create_subscription<mavros_msgs::msg::State>("state", sub_qos, std::bind(&PX4Telemetry::state_callback, this, _1));
     ext_state_sub_ = this->create_subscription<mavros_msgs::msg::ExtendedState>("extended_state", sub_qos, std::bind(&PX4Telemetry::ext_state_callback, this, _1));
     battery_sub_ = this->create_subscription<sensor_msgs::msg::BatteryState>("battery", sub_qos, std::bind(&PX4Telemetry::battery_callback, this, _1));
-    joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&PX4Telemetry::joy_callback, this, _1));
+   // joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>("/joy", 10, std::bind(&PX4Telemetry::joy_callback, this, _1));
     altitude_sub_ = this->create_subscription<mavros_msgs::msg::Altitude>("altitude", sub_qos, std::bind(&PX4Telemetry::altitude_callback, this, _1));
     global_lpos_sub_ = this->create_subscription<nav_msgs::msg::Odometry>("global_position/local", sub_qos, std::bind(&PX4Telemetry::global_lpos_callback, this, _1));
     global_gpos_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>("global_position/global", sub_qos, std::bind(&PX4Telemetry::global_gpos_callback, this, _1));
+    fleet_manager_heartbeat_sub_ = this->create_subscription<swarm_interfaces::msg::Heartbeat>("/fleet_manager/heartbeat", sub_qos, std::bind(&PX4Telemetry::fleet_manager_heartbeat_callback_, this, _1));
 }
 
 void PX4Telemetry::init_service_clients() {
     set_mode_client_ = this->create_client<mavros_msgs::srv::SetMode>("set_mode"); arm_client_ = this->create_client<mavros_msgs::srv::CommandBool>("cmd/arming");
     takeoff_client_ = this->create_client<mavros_msgs::srv::CommandTOL>("cmd/takeoff");
     land_client_ = this->create_client<mavros_msgs::srv::CommandTOL>("cmd/land");
-    connect_agent_client_ = this->create_client<fleet_manager::srv::ConnectAgent>("/connect_agent");
+    connect_agent_client_ = this->create_client<swarm_interfaces::srv::ConnectAgent>("/fleet_manager/connect_agent");
 
     // Wait for connect agent service
     while(!connect_agent_client_->wait_for_service(1s)) {
@@ -387,12 +387,6 @@ void PX4Telemetry::global_gpos_callback(const sensor_msgs::msg::NavSatFix::Share
 
     //Set initialization flag
     if (!gpos_init_) gpos_init_ = true;
-
-	// publish global pose with orientation
-	Geographic_msgs::msg::GeoPoseStamped apark_gpos;
-	apark_gpos.header.stamp = now;
-	apark_gpos.pose = apark_to_global(apark_pose_.pose);
-	apark_global_pose_publisher->publish(apark_gpos);
 }
 
 int PX4Telemetry::get_button(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Button &button) {
@@ -510,14 +504,13 @@ void PX4Telemetry::tol_response_callback(rclcpp::Client<mavros_msgs::srv::Comman
     }
 }
 
-void PX4Telemetry::connect_agent_response_callback(rclcpp::Client<fleet_manager::srv::ConnectAgent>::SharedFuture future) {
+void PX4Telemetry::connect_agent_response_callback(rclcpp::Client<swarm_interfaces::srv::ConnectAgent>::SharedFuture future) {
     auto response = future.get();
 
     if (response->success) {
         RCLCPP_INFO(this->get_logger(), "Successfully connected to fleet manager.");
         
         // create subscription to fleet manager heartbeat
-        fleet_manager_heartbeat_sub_ = this->create_subscription<fleet_manager::msg::Heartbeat>("/fleet_manager/heartbeat", 10, std::bind(&PX4Telemetry::fleet_manager_heartbeat_callback_, this, _1));
         
         // start sending heartbeats
         heartbeat_timer_ = this->create_wall_timer(0.1s, std::bind(&PX4Telemetry::send_heartbeat, this));
@@ -582,7 +575,7 @@ geographic_msgs::msg::GeoPose PX4Telemetry::apark_to_global(const geometry_msgs:
 
 // service call to connect with fleet manager
 void PX4Telemetry::send_connection_request() {
-    auto request = std::make_shared<fleet_manager::srv::ConnectAgent::Request>();
+    auto request = std::make_shared<swarm_interfaces::srv::ConnectAgent::Request>();
     request->agent_name = px4_id_;
     request->battery_level = battery_voltage_;
 
@@ -590,7 +583,7 @@ void PX4Telemetry::send_connection_request() {
 }
 
 void PX4Telemetry::send_heartbeat() {
-    auto msg = fleet_manager::msg::Heartbeat();
+    auto msg = swarm_interfaces::msg::Heartbeat();
     msg.agent_name = px4_id_;
     msg.battery_level = battery_voltage_;
     msg.timestamp = this->get_clock()->now().nanoseconds();
@@ -604,6 +597,6 @@ void PX4Telemetry::send_heartbeat() {
     }
 }
 
-void PX4Telemetry::fleet_manager_heartbeat_callback_(const fleet_manager::msg::Heartbeat::SharedPtr msg) {
+void PX4Telemetry::fleet_manager_heartbeat_callback_(const swarm_interfaces::msg::Heartbeat::SharedPtr msg) {
     last_heartbeat_time_ = this->get_clock()->now();
 }
