@@ -93,8 +93,6 @@ void PX4Telemetry::init_subscribers() {
     sub_qos.durability_volatile();
 
     //Mavros subscribers
-    state_sub_ = this->create_subscription<mavros_msgs::msg::State>("state", sub_qos, std::bind(&PX4Telemetry::state_callback, this, _1));
-    ext_state_sub_ = this->create_subscription<mavros_msgs::msg::ExtendedState>("extended_state", sub_qos, std::bind(&PX4Telemetry::ext_state_callback, this, _1));
     battery_sub_ = this->create_subscription<sensor_msgs::msg::BatteryState>("battery", sub_qos, std::bind(&PX4Telemetry::battery_callback, this, _1));
    // joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>("/joy", 10, std::bind(&PX4Telemetry::joy_callback, this, _1));
     altitude_sub_ = this->create_subscription<mavros_msgs::msg::Altitude>("altitude", sub_qos, std::bind(&PX4Telemetry::altitude_callback, this, _1));
@@ -249,65 +247,6 @@ void PX4Telemetry::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) 
     // }
 }
 
-void PX4Telemetry::state_callback(const mavros_msgs::msg::State::SharedPtr state_msg) {
-
-    if (state_msg->armed && !current_state_.armed) {
-        RCLCPP_WARN(this->get_logger(), "Armed");
-    } else if (!state_msg->armed && current_state_.armed) {
-        RCLCPP_WARN(this->get_logger(), "Disarmed");
-    }
-
-    // if (state_msg->mode == offboard_str_ && current_state_.mode != offboard_str_) {
-    //     RCLCPP_WARN(this->get_logger(), "Offboard mode enabled.");
-    //     //If on the ground when offboard is enabled, disable it
-    //     if (landed_state_ == on_ground) {
-    //         auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
-    //         request->custom_mode = "AUTO.LOITER";
-    //         auto set_mode_result = set_mode_client_->async_send_request(request, std::bind(&AstroTeleop::position_mode_response_callback, this, _1));
-    //     }
-    // } else 
-
-    if (state_msg->mode == loiter_str_ && current_state_.mode != loiter_str_) {
-        RCLCPP_WARN(this->get_logger(), "Loiter mode enabled.");
-        
-        if (landing_requested_) {
-            //Send landing request
-            send_tol_request(false);
-            landing_requested_ = false;
-        }
-    } else if (state_msg->mode == offboard_str_ && current_state_.mode != offboard_str_) {
-        RCLCPP_WARN(this->get_logger(), "Offboard mode enabled.");
-    }
-
-    current_state_ = *state_msg;
-}
-
-void PX4Telemetry::ext_state_callback(const mavros_msgs::msg::ExtendedState::SharedPtr ext_state_msg) {
-
-    if ((LandedState)ext_state_msg->landed_state != landed_state_) {
-        switch (ext_state_msg->landed_state) {
-            case undefined: {
-                RCLCPP_ERROR(this->get_logger(), "Undefined landed state!");
-                break;
-            } case on_ground: {
-                RCLCPP_WARN(this->get_logger(), "Entered on ground state.");
-                break;
-            } case in_air: {
-                RCLCPP_WARN(this->get_logger(), "Entered in air state.");
-                break;
-            } case takeoff: {
-                RCLCPP_WARN(this->get_logger(), "Entered takeoff state.");
-                break;
-            } case landing: {
-                RCLCPP_WARN(this->get_logger(), "Entered landing state.");
-                break;
-            }
-        }
-
-        landed_state_ = (LandedState)ext_state_msg->landed_state;
-    }
-}
-
 void PX4Telemetry::battery_callback(const sensor_msgs::msg::BatteryState::SharedPtr msg) {
     //Todo: Fix this so it matches readout on Astro (scale via usable battery life)
     // RCLCPP_WARN(this->get_logger(), "Battery = %.2f%%", (msg->voltage-MIN_VOLTAGE)/(MAX_VOLTAGE-MIN_VOLTAGE)*100.0);
@@ -318,7 +257,7 @@ void PX4Telemetry::battery_callback(const sensor_msgs::msg::BatteryState::Shared
 void PX4Telemetry::altitude_callback(const mavros_msgs::msg::Altitude::SharedPtr msg) {
     //Gazebo sim uses monotonic altitude, physical drone uses local tied to bottom_clearance via lidar
     if (sim_mode_) {
-        apark_pose_.pose.position.z = msg->monotonic;
+        apark_pose_.pose.position.z = msg->local;
     } else {
         apark_pose_.pose.position.z = msg->local;
     }

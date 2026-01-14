@@ -131,8 +131,6 @@ private:
 
     void joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg);
 
-    void state_callback(const mavros_msgs::msg::State::SharedPtr state_msg);
-    void ext_state_callback(const mavros_msgs::msg::ExtendedState::SharedPtr ext_state_msg);
     void battery_callback(const sensor_msgs::msg::BatteryState::SharedPtr msg);
     void altitude_callback(const mavros_msgs::msg::Altitude::SharedPtr msg);
     void global_lpos_callback(const nav_msgs::msg::Odometry::SharedPtr msg);
