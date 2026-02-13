@@ -54,6 +54,7 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
     if (sim_mode_) {
         RCLCPP_WARN(this->get_logger(), "Simulation mode enabled.");
     }
+    else RCLCPP_WARN(this->get_logger(), "Using local altitude for physical drone. Sim Mode Disabled.");
 
     //Convert park transform to quaternion
     q_utm_to_apark_.setRPY(0, 0, origin_r_);

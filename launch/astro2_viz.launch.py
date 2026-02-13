@@ -20,12 +20,21 @@ def generate_launch_description():
             name='rviz2',
             arguments=['-d', os.path.join(get_package_share_directory('autonomy_park_viz'), 'rviz', 'autonomy_park.rviz')]
         ),
+        # Node(
+        #     package='joy',
+        #     executable='joy_node',
+        #     name='joy_node',
+        #     namespace='astro2',
+        #     parameters=[os.path.join(get_package_share_directory('px4_telemetry'), 'param', 'joy_config.yaml')],
+        #     output='screen'
+        # ),
         Node(
             package='px4_telemetry',
             executable='px4_telemetry_node',
             name='px4_telemetry_node',
-            namespace='astro1',
-            parameters=[os.path.join(get_package_share_directory('px4_telemetry'), 'param', 'park_coordinates.yaml')],
+            namespace='astro2',
+            parameters=[os.path.join(get_package_share_directory('px4_telemetry'), 'param', 'park_coordinates.yaml'),
+                        os.path.join(get_package_share_directory('px4_telemetry'), 'param', 'button_config.yaml'),],
             output='screen'
         )
     ])
