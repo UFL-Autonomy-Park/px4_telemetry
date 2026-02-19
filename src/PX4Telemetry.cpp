@@ -8,7 +8,7 @@ using std::placeholders::_2;
 using namespace std::chrono_literals;
 
 PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(false), alt_init_(false), lpos_init_(false), gpos_init_(false) {
-    RCLCPP_INFO(this->get_logger(), "Initializing PX4 Telemetry Node");
+    RCLCPP_DEBUG(this->get_logger(), "Initializing PX4 Telemetry Node");
     
     //Get my namespace (remove the slash with substr)
     px4_id_ = std::string(this->get_namespace()).substr(1);
@@ -29,8 +29,11 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
 
     //Initialize egm96 (WGS-84) ellipsoid 
     egm96_5_ = std::make_shared<GeographicLib::Geoid>("egm96-5", "", true, true);
-
-    RCLCPP_INFO(this->get_logger(), "Astro Telemetry Initialized.");
+    
+    if (sim_mode_)
+        RCLCPP_INFO(this->get_logger(), "PX4 Telemetry Initialized In Sim Mode.");
+    else 
+        RCLCPP_INFO(this->get_logger(), "PX4 Telemetry Initialized In APark Mode.");
 }
 
 void PX4Telemetry::init_parameters() {
@@ -43,36 +46,21 @@ void PX4Telemetry::init_parameters() {
     this->declare_parameter("origin_r", 0.0);
     this->declare_parameter("utm_zone", 0);
     this->declare_parameter("utm_band", "R");
+    this->declare_parameter("sim_mode", false);
     if (
         this->get_parameter("origin_x", origin_x_) && 
         this->get_parameter("origin_y", origin_y_) && 
         this->get_parameter("origin_r", origin_r_) && 
         this->get_parameter("utm_zone", utm_zone_) &&
-        this->get_parameter("utm_band", utm_band_str)
+        this->get_parameter("utm_band", utm_band_str) &&
+        this->get_parameter("sim_mode", sim_mode_)
     ) {
         utm_band_ = utm_band_str[0];
-        RCLCPP_INFO(this->get_logger(), "Park origin set to (%.4f, %.4f), %.4f rad, Zone %d, Band %c", origin_x_, origin_y_, origin_r_, utm_zone_, utm_band_);
+        RCLCPP_DEBUG(this->get_logger(), "Park origin set to (%.4f, %.4f), %.4f rad, Zone %d, Band %c", origin_x_, origin_y_, origin_r_, utm_zone_, utm_band_);
     } else {
         RCLCPP_ERROR(this->get_logger(), "Park geodesy parameters not provided.");
         rclcpp::shutdown();
     }
-
-    this->declare_parameter("sim_mode", false);
-    this->get_parameter("sim_mode", sim_mode_);
-    if (sim_mode_) {
-        RCLCPP_WARN(this->get_logger(), "Simulation mode enabled.");
-    }
-
-    // //Joy button config
-    // this->declare_parameter("arm_button", -1);
-    // this->declare_parameter("disarm_button", -1);
-    // this->declare_parameter("control_button", -1);
-    // this->declare_parameter("follow_setpoint_button", -1);
-    // this->get_parameter("arm_button", buttons_.arm.button);
-    // this->get_parameter("disarm_button", buttons_.disarm.button);
-    // this->get_parameter("control_button", buttons_.control.button);
-    // this->get_parameter("follow_setpoint_button", buttons_.follow.button);
-    // RCLCPP_INFO(this->get_logger(), "Loaded joy parameters:\nArm: %d, Disarm: %d, Control: %d", buttons_.arm.button, buttons_.disarm.button, buttons_.control.button);
 }
 
 void PX4Telemetry::init_publishers() {
@@ -94,7 +82,6 @@ void PX4Telemetry::init_subscribers() {
 
     //Mavros subscribers
     battery_sub_ = this->create_subscription<sensor_msgs::msg::BatteryState>("battery", sub_qos, std::bind(&PX4Telemetry::battery_callback, this, _1));
-   // joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>("/joy", 10, std::bind(&PX4Telemetry::joy_callback, this, _1));
     altitude_sub_ = this->create_subscription<mavros_msgs::msg::Altitude>("altitude", sub_qos, std::bind(&PX4Telemetry::altitude_callback, this, _1));
     global_lpos_sub_ = this->create_subscription<nav_msgs::msg::Odometry>("global_position/local", sub_qos, std::bind(&PX4Telemetry::global_lpos_callback, this, _1));
     global_gpos_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>("global_position/global", sub_qos, std::bind(&PX4Telemetry::global_gpos_callback, this, _1));
@@ -114,7 +101,7 @@ void PX4Telemetry::init_service_clients() {
             rclcpp::shutdown();
             return;
         }
-        RCLCPP_INFO(this->get_logger(), "Connect agent service not available, waiting again...");
+        RCLCPP_DEBUG(this->get_logger(), "Connect agent service not available, waiting again...");
     }
 
     //Wait for set mode service
@@ -124,7 +111,7 @@ void PX4Telemetry::init_service_clients() {
             rclcpp::shutdown();
             return;
         }
-        RCLCPP_INFO(this->get_logger(), "Mode service not available, waiting again...");
+        RCLCPP_DEBUG(this->get_logger(), "Mode service not available, waiting again...");
     }
 
     //Wait for arm service
@@ -134,7 +121,7 @@ void PX4Telemetry::init_service_clients() {
             rclcpp::shutdown();
             return;
         }
-        RCLCPP_INFO(this->get_logger(), "Arming service not available, waiting again...");
+        RCLCPP_DEBUG(this->get_logger(), "Arming service not available, waiting again...");
     }
 
     //Wait for TOL service
@@ -144,107 +131,8 @@ void PX4Telemetry::init_service_clients() {
             rclcpp::shutdown();
             return;
         }
-        RCLCPP_INFO(this->get_logger(), "TOL service not available, waiting again...");
+        RCLCPP_DEBUG(this->get_logger(), "TOL service not available, waiting again...");
     }
-}
-
-
-void PX4Telemetry::joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
-    //Prevent operation until telemetry is initialized
-    if (!(alt_init_ && lpos_init_ && gpos_init_)) {
-        RCLCPP_ERROR(this->get_logger(), "Button presses ignored until telemetry is initialized.");
-    }
-
-    //Check for arm button press
-    int arm_button_state = get_button(joy_msg, buttons_.arm);
-    if (arm_button_state != button_state_.arm.state) {
-        if (arm_button_state == 1) {
-            RCLCPP_INFO(this->get_logger(), "Arm/takeoff button pressed");
-
-            //Arm or takeoff, depending on the state
-            if (!current_state_.armed) {
-                //Arm
-                send_arming_request(true);
-            } else {
-                send_tol_request(true);
-            }
-        }
-
-        button_state_.arm.state = arm_button_state;
-    }
-
-    // int control_button_state = get_button(joy_msg, buttons_.control);
-    // if (control_button_state != button_state_.control.state) {
-    //     if (control_button_state == 1) {
-    //         if(control_mode_ == "position") {
-    //             RCLCPP_WARN(this->get_logger(), "Mode set to velocity control.");
-    //             control_mode_ = "velocity";
-    //         }
-    //         else { 
-    //         control_mode_ = "position";
-    //         RCLCPP_WARN(this->get_logger(), "Mode set to position control.");
-    //         }
-    //     }
-    // }
-
-    //Check for disarm button press
-    int disarm_button_state = get_button(joy_msg, buttons_.disarm);
-    if (disarm_button_state != button_state_.disarm.state) {
-        if (disarm_button_state == 1) {
-            RCLCPP_INFO(this->get_logger(), "Disarm/land button pressed");
-
-            if (current_state_.armed) {
-                if (landed_state_ == on_ground) {
-                    //Send disarm request
-                    send_arming_request(false);
-                } else {
-                    if (current_state_.mode == loiter_str_) {
-                        //If in auto loiter, go ahead and land
-                        send_tol_request(false);
-                    } else {
-                        //Otherwise, set landing request flag and request auto loiter mode 
-                        landing_requested_ = true;
-
-                        auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
-                        request->custom_mode = loiter_str_;
-                        auto set_mode_result = set_mode_client_->async_send_request(request, std::bind(&PX4Telemetry::loiter_mode_response_callback, this, _1));
-                    }
-                }
-            } else {
-                RCLCPP_ERROR(this->get_logger(), "Not armed - disarm/land request ignored.");
-            }
-        }
-        button_state_.disarm.state = disarm_button_state;
-    }
-
-    //Check for arm button press
-    int offboard_button_state = get_button(joy_msg, buttons_.offboard);
-    if (offboard_button_state != button_state_.offboard.state) {
-        if (offboard_button_state == 1) {
-            RCLCPP_INFO(this->get_logger(), "Offboard button pressed.");
-
-            //Toggle between offboard and auto loiter
-            if (current_state_.mode == offboard_str_) {
-                auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
-                request->custom_mode = loiter_str_;
-                auto set_mode_result = set_mode_client_->async_send_request(request, std::bind(&PX4Telemetry::loiter_mode_response_callback, this, _1));
-            } else {
-                auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
-                request->custom_mode = offboard_str_;
-                auto set_mode_result = set_mode_client_->async_send_request(request, std::bind(&PX4Telemetry::offboard_mode_response_callback, this, _1));
-            }
-        }
-        button_state_.offboard.state = offboard_button_state;
-    }
-
-    // check for velocity setpoint follow button press
-    // int follow_button_state = get_button(joy_msg, buttons_.follow);
-    // if(follow_button_state != button_state_.follow.state) {
-    //     if(follow_button_state == 1) {
-    //         setpoint_timer_ = this->create_wall_timer(100ms, std::bind(&AstroTeleop::follow_setpoint, this));
-    //     }
-    //     button_state_.follow.state = follow_button_state;
-    // }
 }
 
 void PX4Telemetry::battery_callback(const sensor_msgs::msg::BatteryState::SharedPtr msg) {
@@ -328,80 +216,7 @@ void PX4Telemetry::global_gpos_callback(const sensor_msgs::msg::NavSatFix::Share
     if (!gpos_init_) gpos_init_ = true;
 }
 
-int PX4Telemetry::get_button(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Button &button) {
-    if (button.button < 0 || button.button > (int)joy_msg->buttons.size()-1) {
-        RCLCPP_ERROR(this->get_logger(), "Button %d out of range, joy has %d buttons", button.button, (int)joy_msg->buttons.size());
-        return -1;
-    }
 
-    return joy_msg->buttons[button.button];
-}
-
-void PX4Telemetry::send_arming_request(bool arm) {
-    bool valid_request = false;
-    if (arm) {
-        if (!current_state_.armed) {
-            RCLCPP_WARN(this->get_logger(), "Sending arm request.");
-            valid_request = true;
-        } else {
-            RCLCPP_WARN(this->get_logger(), "Device already armed - arm request ignored.");
-            return;
-        }
-    } else {
-        if (current_state_.armed) {
-            RCLCPP_WARN(this->get_logger(), "Sending disarm request.");
-            valid_request = true;
-        } else {
-            RCLCPP_WARN(this->get_logger(), "Device already disarmed - disarm request ignored.");
-            return;
-        }
-    }
-
-    if (valid_request) {
-        auto arm_request = std::make_shared<mavros_msgs::srv::CommandBool::Request>();
-        arm_request->value = arm;
-        auto arm_result = arm_client_->async_send_request(arm_request, std::bind(&PX4Telemetry::arm_response_callback, this, _1));
-    }
-}
-
-void PX4Telemetry::send_tol_request(bool takeoff) {
-    auto tol_request = std::make_shared<mavros_msgs::srv::CommandTOL::Request>();
-
-    if (takeoff) {
-        RCLCPP_WARN(this->get_logger(), "Sending takeoff request.");
-        
-        //Set takeoff position to current @ 1 meter altitude
-        geometry_msgs::msg::Pose takeoff_pose = apark_pose_.pose;
-
-        geographic_msgs::msg::GeoPose global_pose = apark_to_global(takeoff_pose);
-        tol_request->yaw = quat_to_yaw(global_pose.orientation);
-        tol_request->latitude = global_pose.position.latitude;
-        tol_request->longitude = global_pose.position.longitude;
-
-        //Take off to a height of 2 meters above the current AMSL
-        // tol_request->altitude = altitude_amsl_ - apark_pose_.pose.position.z + 1.5;
-        tol_request->altitude = altitude_amsl_ + 2.0;
-
-        RCLCPP_WARN(this->get_logger(), "Sending takeoff request.");
-
-        RCLCPP_WARN(this->get_logger(), "Taking off to %.2f meters AMSL", tol_request->altitude);
-
-        auto tol_result = takeoff_client_->async_send_request(tol_request, std::bind(&PX4Telemetry::tol_response_callback, this, _1));
-    } else {
-        RCLCPP_WARN(this->get_logger(), "Sending landing request.");
-
-        //Set landing pos to current @ 0 meter altitude
-        geometry_msgs::msg::Pose landing_pose = apark_pose_.pose;
-
-        geographic_msgs::msg::GeoPose global_pose = apark_to_global(landing_pose);
-        tol_request->yaw = quat_to_yaw(global_pose.orientation);
-        tol_request->latitude = global_pose.position.latitude;
-        tol_request->longitude = global_pose.position.longitude;
-        tol_request->altitude = 0.0;
-
-        auto tol_result = land_client_->async_send_request(tol_request, std::bind(&PX4Telemetry::tol_response_callback, this, _1));
-    }
-}
 
 void PX4Telemetry::loiter_mode_response_callback(rclcpp::Client<mavros_msgs::srv::SetMode>::SharedFuture future) {
     auto response = future.get();
