@@ -8,9 +8,8 @@ using std::placeholders::_2;
 using namespace std::chrono_literals;
 
 PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(false), alt_init_(false), lpos_init_(false), gpos_init_(false) {
-    RCLCPP_DEBUG(this->get_logger(), "Initializing PX4 Telemetry Node");
     
-    //Get my namespace (remove the slash with substr)
+    //Get namespace (remove the slash with substr)
     px4_id_ = std::string(this->get_namespace()).substr(1);
 
     init_parameters();
@@ -23,13 +22,6 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
 
     send_connection_request();
 
-    //Convert park transform to quaternion
-    q_utm_to_apark_.setRPY(0, 0, origin_r_);
-    q_apark_to_utm_.setRPY(0, 0, -origin_r_);
-
-    //Initialize egm96 (WGS-84) ellipsoid 
-    egm96_5_ = std::make_shared<GeographicLib::Geoid>("egm96-5", "", true, true);
-    
     if (sim_mode_)
         RCLCPP_INFO(this->get_logger(), "PX4 Telemetry Initialized In Sim Mode.");
     else 
@@ -40,7 +32,14 @@ void PX4Telemetry::init_parameters() {
     //Temporary string storage for UTM band
     std::string utm_band_str;
 
-    // geodesy parameters
+    //Convert park transform to quaternion
+    q_utm_to_apark_.setRPY(0, 0, origin_r_);
+    q_apark_to_utm_.setRPY(0, 0, -origin_r_);
+
+    //Initialize egm96 (WGS-84) ellipsoid 
+    egm96_5_ = std::make_shared<GeographicLib::Geoid>("egm96-5", "", true, true);
+    
+    // geodesy parameters + sim mode
     this->declare_parameter("origin_x", 0.0);
     this->declare_parameter("origin_y", 0.0);
     this->declare_parameter("origin_r", 0.0);
@@ -89,9 +88,6 @@ void PX4Telemetry::init_subscribers() {
 }
 
 void PX4Telemetry::init_service_clients() {
-    set_mode_client_ = this->create_client<mavros_msgs::srv::SetMode>("set_mode"); arm_client_ = this->create_client<mavros_msgs::srv::CommandBool>("cmd/arming");
-    takeoff_client_ = this->create_client<mavros_msgs::srv::CommandTOL>("cmd/takeoff");
-    land_client_ = this->create_client<mavros_msgs::srv::CommandTOL>("cmd/land");
     connect_agent_client_ = this->create_client<swarm_interfaces::srv::ConnectAgent>("/fleet_manager/connect_agent");
 
     // Wait for connect agent service
@@ -104,35 +100,6 @@ void PX4Telemetry::init_service_clients() {
         RCLCPP_DEBUG(this->get_logger(), "Connect agent service not available, waiting again...");
     }
 
-    //Wait for set mode service
-    while (!set_mode_client_->wait_for_service(1s)) {
-        if (!rclcpp::ok()) {
-            RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for mode service. Exiting.");
-            rclcpp::shutdown();
-            return;
-        }
-        RCLCPP_DEBUG(this->get_logger(), "Mode service not available, waiting again...");
-    }
-
-    //Wait for arm service
-    while (!arm_client_->wait_for_service(1s)) {
-        if (!rclcpp::ok()) {
-            RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for arming service. Exiting.");
-            rclcpp::shutdown();
-            return;
-        }
-        RCLCPP_DEBUG(this->get_logger(), "Arming service not available, waiting again...");
-    }
-
-    //Wait for TOL service
-    while (!takeoff_client_->wait_for_service(1s)) {
-        if (!rclcpp::ok()) {
-            RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for TOL service. Exiting.");
-            rclcpp::shutdown();
-            return;
-        }
-        RCLCPP_DEBUG(this->get_logger(), "TOL service not available, waiting again...");
-    }
 }
 
 void PX4Telemetry::battery_callback(const sensor_msgs::msg::BatteryState::SharedPtr msg) {
@@ -216,48 +183,6 @@ void PX4Telemetry::global_gpos_callback(const sensor_msgs::msg::NavSatFix::Share
     if (!gpos_init_) gpos_init_ = true;
 }
 
-
-
-void PX4Telemetry::loiter_mode_response_callback(rclcpp::Client<mavros_msgs::srv::SetMode>::SharedFuture future) {
-    auto response = future.get();
-
-    if (response->mode_sent) {
-        RCLCPP_INFO(this->get_logger(), "Loiter mode request succeeded.");
-    } else {
-        RCLCPP_ERROR(this->get_logger(), "Loiter mode request failed!");
-    }
-}
-
-void PX4Telemetry::offboard_mode_response_callback(rclcpp::Client<mavros_msgs::srv::SetMode>::SharedFuture future) {
-    auto response = future.get();
-
-    if (response->mode_sent) {
-        RCLCPP_INFO(this->get_logger(), "Offboard mode request succeeded.");
-    } else {
-        RCLCPP_ERROR(this->get_logger(), "Offboard mode request failed!");
-    }
-}
-
-void PX4Telemetry::arm_response_callback(rclcpp::Client<mavros_msgs::srv::CommandBool>::SharedFuture future) {
-    auto response = future.get();
-
-    if (response->success) {
-        RCLCPP_INFO(this->get_logger(), "Arm/disarm request succeeded. Result=%d", response->result);
-    } else {
-        RCLCPP_ERROR(this->get_logger(), "Arm/disarm request failed!");
-    }
-}
-
-void PX4Telemetry::tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTOL>::SharedFuture future) {
-    auto response = future.get();
-
-    if (response->success) {
-        RCLCPP_INFO(this->get_logger(), "TOL request succeeded. Result=%d", response->result);
-    } else {
-        RCLCPP_ERROR(this->get_logger(), "TOL request failed!");
-    }
-}
-
 void PX4Telemetry::connect_agent_response_callback(rclcpp::Client<swarm_interfaces::srv::ConnectAgent>::SharedFuture future) {
     auto response = future.get();
 
@@ -277,14 +202,6 @@ void PX4Telemetry::connect_agent_response_callback(rclcpp::Client<swarm_interfac
     }
 }
 
-double PX4Telemetry::quat_to_yaw(geometry_msgs::msg::Quaternion quat) {
-
-    // yaw (z-axis rotation)
-    double siny_cosp = 2 * (quat.w * quat.z + quat.x * quat.y);
-    double cosy_cosp = 1 - 2 * (quat.y * quat.y + quat.z * quat.z);
-    double yaw = std::atan2(siny_cosp, cosy_cosp);
-    return yaw;
-}
 
 //Converts a pose in the autonomy park frame to LLA
 geographic_msgs::msg::GeoPose PX4Telemetry::apark_to_global(const geometry_msgs::msg::Pose &apark_pose) {
