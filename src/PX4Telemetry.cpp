@@ -202,46 +202,8 @@ void PX4Telemetry::connect_agent_response_callback(rclcpp::Client<swarm_interfac
     }
 }
 
-
-//Converts a pose in the autonomy park frame to LLA
-geographic_msgs::msg::GeoPose PX4Telemetry::apark_to_global(const geometry_msgs::msg::Pose &apark_pose) {
-    //Autonomy park setpoint coordinates
-    double sp_x = apark_pose.position.x;
-    double sp_y = apark_pose.position.y;
-    
-    //Un-rotate setpoint coordinates
-    double dx = cos(origin_r_)*sp_x + sin(origin_r_)*sp_y;
-    double dy = -sin(origin_r_)*sp_x + cos(origin_r_)*sp_y;
-
-    //Compute AMSL altitude using park elevation offset
-    // double altitude_amsl = apark_pose.position.z + origin_z_;
-
-    //Convert park coordinates to UTM
-    geodesy::UTMPoint utm_pos;
-    utm_pos.zone = utm_zone_;
-    utm_pos.band = utm_band_;
-    utm_pos.easting = dx + origin_x_;
-    utm_pos.northing = dy + origin_y_;
-
-    //Convert UTM easting/northing to lat/long
-    geographic_msgs::msg::GeoPoint global_pos = geodesy::toMsg(utm_pos);
-
-    //Convert AMSL altitude to ellipsoidal
-    // double geoid_height = GeographicLib::Geoid::GEOIDTOELLIPSOID * (*egm96_5_)(global_pos.latitude, global_pos.longitude);
-
-    //IMPORTANT: Command altitude is AMSL! (feedback is WGS-84 ellipsoid)
-    global_pos.altitude = altitude_amsl_;
-
-    //Finally, compute global orientation
-    tf2::Quaternion q_utm, q_apark;
-    tf2::fromMsg(apark_pose.orientation, q_apark);
-    q_utm = q_apark_to_utm_*q_apark;
-    
-    geographic_msgs::msg::GeoPose global_pose;
-    global_pose.position = global_pos;
-    global_pose.orientation = tf2::toMsg(q_utm);
-
-    return global_pose;
+void PX4Telemetry::fleet_manager_heartbeat_callback_(const swarm_interfaces::msg::Heartbeat::SharedPtr msg) {
+    last_heartbeat_time_ = this->get_clock()->now();
 }
 
 // service call to connect with fleet manager
@@ -268,6 +230,3 @@ void PX4Telemetry::send_heartbeat() {
     }
 }
 
-void PX4Telemetry::fleet_manager_heartbeat_callback_(const swarm_interfaces::msg::Heartbeat::SharedPtr msg) {
-    last_heartbeat_time_ = this->get_clock()->now();
-}
