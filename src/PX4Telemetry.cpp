@@ -4,8 +4,9 @@
 #define MAX_VOLTAGE 25.2
 
 using std::placeholders::_1;
-using std::placeholders::_2;
 using namespace std::chrono_literals;
+
+int trail_id_ = 0;
 
 PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(false), alt_init_(false), lpos_init_(false), gpos_init_(false) {
     
@@ -22,10 +23,39 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
 
     send_connection_request();
 
+
+	trail_timer_ = this->create_wall_timer(std::chrono::duration<double>(0.01), std::bind(&PX4Telemetry::publish_trail, this));  
+
     if (sim_mode_)
         RCLCPP_INFO(this->get_logger(), "PX4 Telemetry Initialized In Sim Mode.");
     else 
         RCLCPP_INFO(this->get_logger(), "PX4 Telemetry Initialized In APark Mode.");
+}
+
+void PX4Telemetry::publish_trail() {
+	pose_trail_.header.frame_id = "autonomy_park";
+	pose_trail_.ns = "trail";
+	pose_trail_.id = trail_id_;
+	pose_trail_.header.stamp = this->get_clock()->now();
+	pose_trail_.action = visualization_msgs::msg::Marker::ADD;
+	pose_trail_.type = visualization_msgs::msg::Marker::CUBE;
+	pose_trail_.scale.x = 0.05;
+	pose_trail_.scale.y = 0.05;
+	pose_trail_.scale.z = 0.05;
+	std_msgs::msg::ColorRGBA color;
+	color.r = 1.0;
+	color.g = 0.0;
+	color.b = 0.0;
+	color.a = 1.0;
+	builtin_interfaces::msg::Duration t;
+	t.sec = 2;
+	pose_trail_.lifetime = t;
+	pose_trail_.color = color;
+	pose_trail_.pose.position.x	= apark_pose_.pose.position.x;
+	pose_trail_.pose.position.y	= apark_pose_.pose.position.y;
+	pose_trail_.pose.position.z	= apark_pose_.pose.position.z;
+	pose_trail_publisher_->publish(pose_trail_);
+	trail_id_++;
 }
 
 void PX4Telemetry::init_parameters() {
@@ -66,6 +96,7 @@ void PX4Telemetry::init_publishers() {
     apark_pose_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("autonomy_park/pose", 1);
     gp_origin_publisher_ = this->create_publisher<geographic_msgs::msg::GeoPointStamped>("global_position/set_gp_origin", 1);
     heartbeat_publisher_ = this->create_publisher<swarm_interfaces::msg::Heartbeat>("heartbeat", 1);
+	pose_trail_publisher_ = this->create_publisher<visualization_msgs::msg::Marker>("pose_trail", 1);
 
     //Autonomy park tf broadcaster
     apark_tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
@@ -169,6 +200,8 @@ void PX4Telemetry::global_gpos_callback(const sensor_msgs::msg::NavSatFix::Share
     //Publish pose
     apark_pose_.header.frame_id = "autonomy_park";
     this->apark_pose_publisher_->publish(apark_pose_);
+	
+
 
     //Broadcast TF
     apark_tf_.header.stamp = now;

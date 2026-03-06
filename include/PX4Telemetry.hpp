@@ -19,6 +19,8 @@
 #include <sensor_msgs/msg/battery_state.hpp>
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
 #include <sensor_msgs/msg/joy.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <std_msgs/msg/color_rgba.hpp>
 
 //Mavros message and service types 
 #include <mavros_msgs/msg/altitude.hpp>
@@ -61,6 +63,10 @@ private:
     rclcpp::Client<mavros_msgs::srv::CommandTOL>::SharedPtr takeoff_client_, land_client_;
     rclcpp::Client<swarm_interfaces::srv::ConnectAgent>::SharedPtr connect_agent_client_;
 
+	visualization_msgs::msg::Marker pose_trail_;
+	void publish_trail();
+	rclcpp::TimerBase::SharedPtr trail_timer_;
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr pose_trail_publisher_;
     geometry_msgs::msg::PoseStamped apark_pose_;
     std::unique_ptr<tf2_ros::TransformBroadcaster> apark_tf_broadcaster_;
     geometry_msgs::msg::TransformStamped apark_tf_;
@@ -71,6 +77,7 @@ private:
     double origin_x_, origin_y_, origin_r_;
     uint8_t utm_zone_;
     char utm_band_;
+
 
     /**
     * @brief Geoid dataset used to convert between AMSL and WGS-84
