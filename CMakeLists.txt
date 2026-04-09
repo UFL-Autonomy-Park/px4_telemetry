@@ -27,6 +27,7 @@ find_package(geographic_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(swarm_interfaces REQUIRED)
 
 set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};/usr/share/cmake/geographiclib")
 find_package(GeographicLib REQUIRED)
@@ -51,6 +52,7 @@ ament_target_dependencies(
     tf2_ros
     tf2_geometry_msgs
     GeographicLib
+    swarm_interfaces
 )
 
 target_include_directories(

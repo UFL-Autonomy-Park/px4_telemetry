@@ -28,6 +28,8 @@
 #include <mavros_msgs/srv/command_tol.hpp>
 #include <mavros_msgs/srv/set_mode.hpp>
 
+#include <swarm_interfaces/frame_conversions.hpp>
+
 class PX4Telemetry : public rclcpp::Node {
 private:
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
@@ -52,7 +54,7 @@ private:
     std::unique_ptr<tf2_ros::TransformBroadcaster> apark_tf_broadcaster_;
     geometry_msgs::msg::TransformStamped apark_tf_;
 
-    tf2::Quaternion q_utm_to_apark_, q_apark_to_utm_;
+    tf2::Quaternion q_utm_to_apark_;
 
     std::string px4_id_;
     double origin_x_, origin_y_, origin_r_;
@@ -134,8 +136,6 @@ private:
     void arm_response_callback(rclcpp::Client<mavros_msgs::srv::CommandBool>::SharedFuture future);
     void tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTOL>::SharedFuture future);
 
-    //Utility functions
-    geographic_msgs::msg::GeoPose apark_to_global(const geometry_msgs::msg::Pose &apark_pose);
     double quat_to_yaw(geometry_msgs::msg::Quaternion quat);
 
 public:
