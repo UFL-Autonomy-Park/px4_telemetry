@@ -6,6 +6,7 @@
 using std::placeholders::_1;
 using std::placeholders::_2;
 using namespace std::chrono_literals;
+using namespace swarm_interfaces::frame_conversions;
 
 PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(false), alt_init_(false), lpos_init_(false), gpos_init_(false) {
     RCLCPP_INFO(this->get_logger(), "Initializing PX4 Telemetry Node");
@@ -58,9 +59,6 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
 
     //Convert park transform to quaternion
     q_utm_to_apark_.setRPY(0, 0, origin_r_);
-
-    //Convert park transform to quaternion
-    q_apark_to_utm_.setRPY(0, 0, -origin_r_);
 
     //Initialize egm96 (WGS-84) ellipsoid 
     egm96_5_ = std::make_shared<GeographicLib::Geoid>("egm96-5", "", true, true);
@@ -416,7 +414,7 @@ void PX4Telemetry::send_tol_request(bool takeoff) {
         //Set takeoff position to current @ 1 meter altitude
         geometry_msgs::msg::Pose takeoff_pose = apark_pose_.pose;
 
-        geographic_msgs::msg::GeoPose global_pose = apark_to_global(takeoff_pose);
+        geographic_msgs::msg::GeoPose global_pose = apark_to_global(takeoff_pose, altitude_amsl_);
         tol_request->yaw = quat_to_yaw(global_pose.orientation);
         tol_request->latitude = global_pose.position.latitude;
         tol_request->longitude = global_pose.position.longitude;
@@ -436,7 +434,7 @@ void PX4Telemetry::send_tol_request(bool takeoff) {
         //Set landing pos to current @ 0 meter altitude
         geometry_msgs::msg::Pose landing_pose = apark_pose_.pose;
 
-        geographic_msgs::msg::GeoPose global_pose = apark_to_global(landing_pose);
+        geographic_msgs::msg::GeoPose global_pose = apark_to_global(landing_pose, altitude_amsl_);
         tol_request->yaw = quat_to_yaw(global_pose.orientation);
         tol_request->latitude = global_pose.position.latitude;
         tol_request->longitude = global_pose.position.longitude;
@@ -484,57 +482,4 @@ void PX4Telemetry::tol_response_callback(rclcpp::Client<mavros_msgs::srv::Comman
     } else {
         RCLCPP_ERROR(this->get_logger(), "TOL request failed!");
     }
-}
-
-double PX4Telemetry::quat_to_yaw(geometry_msgs::msg::Quaternion quat) {
-
-    // yaw (z-axis rotation)
-    double siny_cosp = 2 * (quat.w * quat.z + quat.x * quat.y);
-    double cosy_cosp = 1 - 2 * (quat.y * quat.y + quat.z * quat.z);
-    double yaw = std::atan2(siny_cosp, cosy_cosp);
-    return yaw;
-}
-
-//Converts a pose in the autonomy park frame to LLA
-geographic_msgs::msg::GeoPose PX4Telemetry::apark_to_global(const geometry_msgs::msg::Pose &apark_pose) {
-    //Autonomy park setpoint coordinates
-    double sp_x = apark_pose.position.x;
-    double sp_y = apark_pose.position.y;
-    
-    //Un-rotate setpoint coordinates
-    double dx = cos(origin_r_)*sp_x + sin(origin_r_)*sp_y;
-    double dy = -sin(origin_r_)*sp_x + cos(origin_r_)*sp_y;
-
-    //Compute AMSL altitude using park elevation offset
-    // double altitude_amsl = apark_pose.position.z + origin_z_;
-
-    //Convert park coordinates to UTM
-    geodesy::UTMPoint utm_pos;
-    utm_pos.zone = utm_zone_;
-    utm_pos.band = utm_band_;
-    utm_pos.easting = dx + origin_x_;
-    utm_pos.northing = dy + origin_y_;
-
-    //Convert UTM easting/northing to lat/long
-    geographic_msgs::msg::GeoPoint global_pos = geodesy::toMsg(utm_pos);
-
-    //RCLCPP_WARN(this->get_logger(), "UTM Easting=%.8f, Northing=%.8f", utm_pos.easting, utm_pos.northing);
-    //RCLCPP_WARN(this->get_logger(), "GPS Lat=%.8f, Long=%.8f\n", global_pos.latitude, global_pos.longitude);
-
-    //Convert AMSL altitude to ellipsoidal
-    // double geoid_height = GeographicLib::Geoid::GEOIDTOELLIPSOID * (*egm96_5_)(global_pos.latitude, global_pos.longitude);
-
-    //IMPORTANT: Command altitude is AMSL! (feedback is WGS-84 ellipsoid)
-    global_pos.altitude = altitude_amsl_;
-
-    //Finally, compute global orientation
-    tf2::Quaternion q_utm, q_apark;
-    tf2::fromMsg(apark_pose.orientation, q_apark);
-    q_utm = q_apark_to_utm_*q_apark;
-    
-    geographic_msgs::msg::GeoPose global_pose;
-    global_pose.position = global_pos;
-    global_pose.orientation = tf2::toMsg(q_utm);
-
-    return global_pose;
 }
