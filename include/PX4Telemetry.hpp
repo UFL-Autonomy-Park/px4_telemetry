@@ -33,11 +33,9 @@
 class PX4Telemetry : public rclcpp::Node {
 private:
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
-
     rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr state_sub_;
     rclcpp::Subscription<mavros_msgs::msg::ExtendedState>::SharedPtr ext_state_sub_;
     rclcpp::Subscription<sensor_msgs::msg::BatteryState>::SharedPtr battery_sub_;
-
     rclcpp::Subscription<mavros_msgs::msg::Altitude>::SharedPtr altitude_sub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr global_lpos_sub_;
     rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr global_gpos_sub_;
@@ -135,8 +133,6 @@ private:
     void offboard_mode_response_callback(rclcpp::Client<mavros_msgs::srv::SetMode>::SharedFuture future);
     void arm_response_callback(rclcpp::Client<mavros_msgs::srv::CommandBool>::SharedFuture future);
     void tol_response_callback(rclcpp::Client<mavros_msgs::srv::CommandTOL>::SharedFuture future);
-
-    double quat_to_yaw(geometry_msgs::msg::Quaternion quat);
 
 public:
     PX4Telemetry();

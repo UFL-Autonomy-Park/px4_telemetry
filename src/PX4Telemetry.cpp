@@ -6,6 +6,7 @@
 using std::placeholders::_1;
 using std::placeholders::_2;
 using namespace std::chrono_literals;
+using namespace swarm_interfaces::frame_conversions;
 
 PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(false), alt_init_(false), lpos_init_(false), gpos_init_(false) {
     RCLCPP_INFO(this->get_logger(), "Initializing PX4 Telemetry Node");
@@ -413,7 +414,7 @@ void PX4Telemetry::send_tol_request(bool takeoff) {
         //Set takeoff position to current @ 1 meter altitude
         geometry_msgs::msg::Pose takeoff_pose = apark_pose_.pose;
 
-        geographic_msgs::msg::GeoPose global_pose = swarm_interfaces::frame_conversions::apark_to_global(takeoff_pose, altitude_amsl_);
+        geographic_msgs::msg::GeoPose global_pose = apark_to_global(takeoff_pose, altitude_amsl_);
         tol_request->yaw = quat_to_yaw(global_pose.orientation);
         tol_request->latitude = global_pose.position.latitude;
         tol_request->longitude = global_pose.position.longitude;
@@ -433,7 +434,7 @@ void PX4Telemetry::send_tol_request(bool takeoff) {
         //Set landing pos to current @ 0 meter altitude
         geometry_msgs::msg::Pose landing_pose = apark_pose_.pose;
 
-        geographic_msgs::msg::GeoPose global_pose = swarm_interfaces::frame_conversions::apark_to_global(landing_pose, altitude_amsl_);
+        geographic_msgs::msg::GeoPose global_pose = apark_to_global(landing_pose, altitude_amsl_);
         tol_request->yaw = quat_to_yaw(global_pose.orientation);
         tol_request->latitude = global_pose.position.latitude;
         tol_request->longitude = global_pose.position.longitude;
@@ -482,13 +483,3 @@ void PX4Telemetry::tol_response_callback(rclcpp::Client<mavros_msgs::srv::Comman
         RCLCPP_ERROR(this->get_logger(), "TOL request failed!");
     }
 }
-
-double PX4Telemetry::quat_to_yaw(geometry_msgs::msg::Quaternion quat) {
-
-    // yaw (z-axis rotation)
-    double siny_cosp = 2 * (quat.w * quat.z + quat.x * quat.y);
-    double cosy_cosp = 1 - 2 * (quat.y * quat.y + quat.z * quat.z);
-    double yaw = std::atan2(siny_cosp, cosy_cosp);
-    return yaw;
-}
-
