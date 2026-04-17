@@ -30,8 +30,9 @@
 #include <mavros_msgs/srv/command_tol.hpp>
 #include <mavros_msgs/srv/set_mode.hpp>
 
-#include "swarm_interfaces/srv/connect_agent.hpp"
-#include "swarm_interfaces/msg/heartbeat.hpp"
+#include <swarm_interfaces/srv/connect_agent.hpp>
+#include <swarm_interfaces/msg/heartbeat.hpp>
+#include <swarm_interfaces/frame_conversions.hpp>
 
 
 class PX4Telemetry : public rclcpp::Node {

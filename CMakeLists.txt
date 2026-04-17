@@ -30,6 +30,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(swarm_interfaces REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(swarm_interfaces REQUIRED)
 
 set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};/usr/share/cmake/geographiclib")
 find_package(GeographicLib REQUIRED)
@@ -57,7 +58,10 @@ ament_target_dependencies(
     GeographicLib
     swarm_interfaces
 	visualization_msgs
+    swarm_interfaces
 )
+
+target_link_libraries(${PROJECT_NAME}_node swarm_interfaces::swarm_interfaces_lib)
 
 target_include_directories(
     ${PROJECT_NAME}_node PUBLIC

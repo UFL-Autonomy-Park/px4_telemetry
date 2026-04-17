@@ -135,8 +135,8 @@ void PX4Telemetry::init_service_clients() {
 
 void PX4Telemetry::battery_callback(const sensor_msgs::msg::BatteryState::SharedPtr msg) {
     //Todo: Fix this so it matches readout on Astro (scale via usable battery life)
-    // RCLCPP_WARN(this->get_logger(), "Battery = %.2f%%", (msg->voltage-MIN_VOLTAGE)/(MAX_VOLTAGE-MIN_VOLTAGE)*100.0);
-    battery_voltage_ = msg->voltage;
+    battery_voltage_ = (msg->voltage-MIN_VOLTAGE)/(MAX_VOLTAGE-MIN_VOLTAGE)*100.0);
+;
 }
 
 //Get local altitude from altitude topic
@@ -221,8 +221,6 @@ void PX4Telemetry::connect_agent_response_callback(rclcpp::Client<swarm_interfac
 
     if (response->success) {
         RCLCPP_INFO(this->get_logger(), "Successfully connected to fleet manager.");
-        
-        // create subscription to fleet manager heartbeat
         
         // start sending heartbeats
         heartbeat_timer_ = this->create_wall_timer(0.1s, std::bind(&PX4Telemetry::send_heartbeat, this));
