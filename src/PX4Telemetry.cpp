@@ -250,7 +250,7 @@ void PX4Telemetry::send_heartbeat() {
     auto msg = swarm_interfaces::msg::Heartbeat();
     msg.agent_name = px4_id_;
     msg.battery_level = battery_voltage_;
-    msg.timestamp = this->get_clock()->now().nanoseconds();
+    msg.timestamp = this->get_clock()->now();
     heartbeat_publisher_->publish(msg);
 
     // check for fleet manager timeout 
