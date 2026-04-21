@@ -25,6 +25,7 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
 
 
 	trail_timer_ = this->create_wall_timer(std::chrono::duration<double>(0.01), std::bind(&PX4Telemetry::publish_trail, this));  
+    drone_state_timer_ = this->create_wall_timer(std::chrono::duration<double>(0.02), std::bind(&PX4Telemetry::publish_drone_state, this));
 
     if (sim_mode_)
         RCLCPP_INFO(this->get_logger(), "PX4 Telemetry Initialized In Sim Mode.");
@@ -97,6 +98,7 @@ void PX4Telemetry::init_publishers() {
     gp_origin_publisher_ = this->create_publisher<geographic_msgs::msg::GeoPointStamped>("global_position/set_gp_origin", 1);
     heartbeat_publisher_ = this->create_publisher<swarm_interfaces::msg::Heartbeat>("heartbeat", 1);
 	pose_trail_publisher_ = this->create_publisher<visualization_msgs::msg::Marker>("pose_trail", 1);
+	drone_state_publisher_ = this->create_publisher<swarm_interfaces::msg::DroneState>("drone_state", 1);
 
     //Autonomy park tf broadcaster
     apark_tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
@@ -135,8 +137,7 @@ void PX4Telemetry::init_service_clients() {
 
 void PX4Telemetry::battery_callback(const sensor_msgs::msg::BatteryState::SharedPtr msg) {
     //Todo: Fix this so it matches readout on Astro (scale via usable battery life)
-    battery_voltage_ = (msg->voltage-MIN_VOLTAGE)/(MAX_VOLTAGE-MIN_VOLTAGE)*100.0);
-;
+    battery_voltage_ = (msg->voltage-MIN_VOLTAGE)/(MAX_VOLTAGE-MIN_VOLTAGE)*100.0;
 }
 
 //Get local altitude from altitude topic
@@ -161,6 +162,8 @@ void PX4Telemetry::global_lpos_callback(const nav_msgs::msg::Odometry::SharedPtr
     tf2::fromMsg(msg->pose.pose.orientation, q_utm);
     q_apark = q_utm_to_apark_*q_utm;
     apark_pose_.pose.orientation = tf2::toMsg(q_apark);
+
+    // add twist 
 
     //Set initialization flag
     if (!lpos_init_) lpos_init_ = true;
@@ -212,6 +215,8 @@ void PX4Telemetry::global_gpos_callback(const sensor_msgs::msg::NavSatFix::Share
 
     apark_tf_broadcaster_->sendTransform(apark_tf_);
 
+    drone_state_.local_pose = apark_pose_;
+
     //Set initialization flag
     if (!gpos_init_) gpos_init_ = true;
 }
@@ -261,3 +266,6 @@ void PX4Telemetry::send_heartbeat() {
     }
 }
 
+void PX4Telemetry::publish_drone_state() {
+    drone_state_publisher_->publish(drone_state_);
+}

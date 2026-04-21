@@ -33,6 +33,7 @@
 #include <swarm_interfaces/srv/connect_agent.hpp>
 #include <swarm_interfaces/msg/heartbeat.hpp>
 #include <swarm_interfaces/frame_conversions.hpp>
+#include <swarm_interfaces/msg/drone_state.hpp>
 
 
 class PX4Telemetry : public rclcpp::Node {
@@ -50,9 +51,11 @@ private:
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr apark_pose_publisher_;
     rclcpp::Publisher<geographic_msgs::msg::GeoPointStamped>::SharedPtr gp_origin_publisher_;
     rclcpp::Publisher<swarm_interfaces::msg::Heartbeat>::SharedPtr heartbeat_publisher_;
+    rclcpp::Publisher<swarm_interfaces::msg::DroneState>::SharedPtr drone_state_publisher_;
 
     // heartbeat shit
     rclcpp::TimerBase::SharedPtr heartbeat_timer_;
+    rclcpp::TimerBase::SharedPtr drone_state_timer_;
     rclcpp::Time heartbeat_timeout_{int64_t(5*1e9)}; // 0.5 seconds
     rclcpp::Time last_heartbeat_time_;
     rclcpp::Subscription<swarm_interfaces::msg::Heartbeat>::SharedPtr fleet_manager_heartbeat_sub_;
@@ -65,12 +68,12 @@ private:
     rclcpp::Client<swarm_interfaces::srv::ConnectAgent>::SharedPtr connect_agent_client_;
 
 	visualization_msgs::msg::Marker pose_trail_;
-	void publish_trail();
 	rclcpp::TimerBase::SharedPtr trail_timer_;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr pose_trail_publisher_;
     geometry_msgs::msg::PoseStamped apark_pose_;
     std::unique_ptr<tf2_ros::TransformBroadcaster> apark_tf_broadcaster_;
     geometry_msgs::msg::TransformStamped apark_tf_;
+    swarm_interfaces::msg::DroneState drone_state_;
 
     tf2::Quaternion q_utm_to_apark_, q_apark_to_utm_;
 
@@ -139,6 +142,7 @@ private:
 
     void joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg);
 
+    // drone state callbacks
     void battery_callback(const sensor_msgs::msg::BatteryState::SharedPtr msg);
     void altitude_callback(const mavros_msgs::msg::Altitude::SharedPtr msg);
     void global_lpos_callback(const nav_msgs::msg::Odometry::SharedPtr msg);
@@ -161,6 +165,8 @@ private:
     //Utility functions
     geographic_msgs::msg::GeoPose apark_to_global(const geometry_msgs::msg::Pose &apark_pose);
     double quat_to_yaw(geometry_msgs::msg::Quaternion quat);
+	void publish_trail();
+    void publish_drone_state();
 
     // init functions
     void init_parameters();
