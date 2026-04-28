@@ -136,13 +136,15 @@ private:
     double battery_voltage_;
 
     //Track initialization of various messages
-    bool alt_init_, lpos_init_, gpos_init_;
+    bool alt_init_, lpos_init_, gpos_init_, mode_init_;
 
     bool sim_mode_;
 
     void joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg);
 
     // drone state callbacks
+    void state_callback(const mavros_msgs::msg::State::SharedPtr msg);
+    void ext_state_callback(const mavros_msgs::msg::ExtendedState::SharedPtr msg);
     void battery_callback(const sensor_msgs::msg::BatteryState::SharedPtr msg);
     void altitude_callback(const mavros_msgs::msg::Altitude::SharedPtr msg);
     void global_lpos_callback(const nav_msgs::msg::Odometry::SharedPtr msg);

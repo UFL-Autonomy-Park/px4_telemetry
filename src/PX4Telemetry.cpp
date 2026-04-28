@@ -8,7 +8,7 @@ using namespace std::chrono_literals;
 
 int trail_id_ = 0;
 
-PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(false), alt_init_(false), lpos_init_(false), gpos_init_(false) {
+PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(false), alt_init_(false), lpos_init_(false), gpos_init_(false), mode_init_(false) {
     
     //Get namespace (remove the slash with substr)
     px4_id_ = std::string(this->get_namespace()).substr(1);
@@ -118,6 +118,8 @@ void PX4Telemetry::init_subscribers() {
     global_lpos_sub_ = this->create_subscription<nav_msgs::msg::Odometry>("global_position/local", sub_qos, std::bind(&PX4Telemetry::global_lpos_callback, this, _1));
     global_gpos_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>("global_position/global", sub_qos, std::bind(&PX4Telemetry::global_gpos_callback, this, _1));
     fleet_manager_heartbeat_sub_ = this->create_subscription<swarm_interfaces::msg::Heartbeat>("/fleet_manager/heartbeat", sub_qos, std::bind(&PX4Telemetry::fleet_manager_heartbeat_callback_, this, _1));
+	state_sub_ = this->create_subscription<mavros_msgs::msg::State>("state", sub_qos, std::bind(&PX4Telemetry::state_callback, this , _1));
+	ext_state_sub_ = this->create_subscription<mavros_msgs::msg::ExtendedState>("extended_state", sub_qos, std::bind(&PX4Telemetry::ext_state_callback, this, _1));
 }
 
 void PX4Telemetry::init_service_clients() {
@@ -135,21 +137,78 @@ void PX4Telemetry::init_service_clients() {
 
 }
 
+void PX4Telemetry::state_callback(const mavros_msgs::msg::State::SharedPtr state_msg) {
+
+    if (state_msg->armed && !drone_state_.armed) {
+        drone_state_.armed = true;
+        RCLCPP_WARN(this->get_logger(), "Armed");
+    }
+	else if (!state_msg->armed && drone_state_.armed) {
+        drone_state_.armed = false;
+        RCLCPP_WARN(this->get_logger(), "Disarmed");
+    }
+
+    if (state_msg->mode == "AUTO.LOITER" && drone_state_.flight_mode != "AUTO.LOITER") {
+        RCLCPP_WARN(this->get_logger(), "Loiter mode enabled.");
+    } 
+    else if (state_msg->mode == "OFFBOARD" && drone_state_.flight_mode != "OFFBOARD") {
+        drone_state_.offboard_mode = true;
+        RCLCPP_WARN(this->get_logger(), "Offboard mode enabled.");
+    }
+    else if (state_msg->mode != "OFFBOARD" && drone_state_.flight_mode == "OFFBOARD") {
+        drone_state_.offboard_mode = false;
+    }
+
+    if (!mode_init_)
+        mode_init_ = true;
+
+    drone_state_.flight_mode = state_msg->mode;
+}
+
+void PX4Telemetry::ext_state_callback(const mavros_msgs::msg::ExtendedState::SharedPtr ext_state_msg) {
+
+    if (ext_state_msg->landed_state != drone_state_.landed_state) {
+        switch (ext_state_msg->landed_state) {
+            case undefined: {
+                RCLCPP_ERROR(this->get_logger(), "Undefined landed state!");
+                break;
+            } case on_ground: {
+                RCLCPP_WARN(this->get_logger(), "Entered on ground state.");
+                break;
+            } case in_air: {
+                RCLCPP_WARN(this->get_logger(), "Entered in air state.");
+                break;
+            } case takeoff: {
+                RCLCPP_WARN(this->get_logger(), "Entered takeoff state.");
+                break;
+            } case landing: {
+                RCLCPP_WARN(this->get_logger(), "Entered landing state.");
+                break;
+            }
+        }
+        drone_state_.landed_state = ext_state_msg->landed_state;
+    }
+}
+
 void PX4Telemetry::battery_callback(const sensor_msgs::msg::BatteryState::SharedPtr msg) {
     //Todo: Fix this so it matches readout on Astro (scale via usable battery life)
     battery_voltage_ = (msg->voltage-MIN_VOLTAGE)/(MAX_VOLTAGE-MIN_VOLTAGE)*100.0;
+
+    drone_state_.battery_voltage = msg->voltage;
+    drone_state_.battery_percentage = battery_voltage_;
 }
 
 //Get local altitude from altitude topic
 void PX4Telemetry::altitude_callback(const mavros_msgs::msg::Altitude::SharedPtr msg) {
     //Gazebo sim uses monotonic altitude, physical drone uses local tied to bottom_clearance via lidar
     if (sim_mode_) {
-        apark_pose_.pose.position.z = msg->local;
+        apark_pose_.pose.position.z = msg->monotonic;
     } else {
         apark_pose_.pose.position.z = msg->local;
     }
     
     altitude_amsl_ = msg->amsl;
+    drone_state_.global_pose.pose.position.altitude = altitude_amsl_;
 
     //Set initialization flag
     if (!alt_init_) alt_init_ = true;
@@ -164,6 +223,7 @@ void PX4Telemetry::global_lpos_callback(const nav_msgs::msg::Odometry::SharedPtr
     apark_pose_.pose.orientation = tf2::toMsg(q_apark);
 
     // add twist 
+    drone_state_.body_vel = msg->twist.twist;
 
     //Set initialization flag
     if (!lpos_init_) lpos_init_ = true;
@@ -180,31 +240,21 @@ void PX4Telemetry::global_gpos_callback(const sensor_msgs::msg::NavSatFix::Share
     geo_msg.longitude = msg->longitude;
     geo_msg.altitude = msg->altitude; //Ellipsoidal altitude
 
+
     //Convert LLA to UTM
     geodesy::UTMPoint utm_pos;
     geodesy::fromMsg(geo_msg, utm_pos);
     
-    //Convert ellipsoidal height to AMSL
-    // double geoid_height = GeographicLib::Geoid::GEOIDTOELLIPSOID * (*egm96_5_)(msg->latitude, msg->longitude);
-    // double altitude_amsl = msg->altitude - geoid_height;
-    // RCLCPP_WARN(this->get_logger(), "AMSL = %.4f meters", altitude_amsl_);
-
     double dx = utm_pos.easting - origin_x_;
     double dy = utm_pos.northing - origin_y_;
     apark_pose_.pose.position.x = cos(origin_r_)*dx - sin(origin_r_)*dy;
     apark_pose_.pose.position.y = sin(origin_r_)*dx + cos(origin_r_)*dy;
 
-    // apark_pose_.pose.position.z = altitude_amsl - origin_z_;
-
     apark_pose_.header.stamp = now;
-
-    // RCLCPP_WARN(this->get_logger(), "Apark Z = %.4f meters", apark_pose_.pose.position.z);
 
     //Publish pose
     apark_pose_.header.frame_id = "autonomy_park";
     this->apark_pose_publisher_->publish(apark_pose_);
-	
-
 
     //Broadcast TF
     apark_tf_.header.stamp = now;
@@ -212,10 +262,12 @@ void PX4Telemetry::global_gpos_callback(const sensor_msgs::msg::NavSatFix::Share
     apark_tf_.transform.translation.y = apark_pose_.pose.position.y;
     apark_tf_.transform.translation.z = apark_pose_.pose.position.z;
     apark_tf_.transform.rotation = apark_pose_.pose.orientation;
-
     apark_tf_broadcaster_->sendTransform(apark_tf_);
 
-    drone_state_.local_pose = apark_pose_;
+    // update drone state msg
+    drone_state_.global_pose.pose.position.latitude = msg->latitude;
+    drone_state_.global_pose.pose.position.longitude = msg->longitude;
+    drone_state_.apark_pose = apark_pose_;
 
     //Set initialization flag
     if (!gpos_init_) gpos_init_ = true;
@@ -267,5 +319,8 @@ void PX4Telemetry::send_heartbeat() {
 }
 
 void PX4Telemetry::publish_drone_state() {
+    if (!alt_init_ || !lpos_init_ || !gpos_init_ || !mode_init_)
+        return;
+
     drone_state_publisher_->publish(drone_state_);
 }
