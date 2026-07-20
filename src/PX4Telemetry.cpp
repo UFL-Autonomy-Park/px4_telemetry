@@ -3,6 +3,29 @@
 #define MIN_VOLTAGE 19.2
 #define MAX_VOLTAGE 25.2
 
+static std::vector<double> boundary_x_;
+static std::vector<double> boundary_y_;
+
+static bool is_inside_geofence(double x, double y) {
+    if (boundary_x_.size() < 4 || boundary_y_.size() < 4) return false; 
+    
+    bool inside = false;
+    int cn = 0; 
+    int n = 4;  
+
+    for (int i = 0; i < n; i++) {
+        int next = (i + 1) % n;
+        if (((boundary_y_[i] <= y) && (boundary_y_[next] > y)) ||
+            ((boundary_y_[i] > y) && (boundary_y_[next] <= y))) {
+            double vt = (double)(y - boundary_y_[i]) / (boundary_y_[next] - boundary_y_[i]);
+            if (x < boundary_x_[i] + vt * (boundary_x_[next] - boundary_x_[i])) {
+                inside = !inside;
+            }
+        }
+    }
+    return inside;
+}
+
 using std::placeholders::_1;
 using std::placeholders::_2;
 using namespace std::chrono_literals;
@@ -36,7 +59,16 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
         RCLCPP_ERROR(this->get_logger(), "Park geodesy parameters not provided.");
         rclcpp::shutdown();
     }
+    // get net boundary coorindates
+    this->declare_parameter("boundary_x", std::vector<double>{-35.578873817841924, 36.02970410722499, 36.21641486192154, -35.4901986862906});
+    this->declare_parameter("boundary_y", std::vector<double>{-8.727940791944679, -9.019393097483713, 8.884337547538404, 8.884337547538413});
+    this->declare_parameter("boundary_x", boundary_x_);
+    this->declare_parameter("boundary_x", boundary_y_);
 
+    if (boundary_x_.size() != 4 || boundary_y_.size() != 4){
+        RCLCPP_ERROR(this->get_logger(),"Geofence boundary must contain exactly 4 coordinates.");
+        rclcpp::shutdown();
+    }
     //Joy button config
     this->declare_parameter("arm_button", -1);
     this->declare_parameter("disarm_button", -1);
@@ -382,6 +414,14 @@ void PX4Telemetry::send_arming_request(bool arm) {
     bool valid_request = false;
     if (arm) {
         if (!current_state_.armed) {
+
+            double current_x = apark_pose_.pose.position.x;
+            double current_y = apark_pose_.pose.position.y;
+
+            if (!is_inside_geofence(current_x, current_y)){
+                RCLCPP_ERROR(this->get_logger(),"ARM REJECTED: Drone is outside the 4-coordinate geofence area! (X: %.2f, Y: %.2f)", current_x, current_y);
+                return;
+            }
             RCLCPP_WARN(this->get_logger(), "Sending arm request.");
             valid_request = true;
         } else {
