@@ -19,13 +19,15 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
     //Get park geodesy parameters
     this->declare_parameter("origin_x", 0.0);
     this->declare_parameter("origin_y", 0.0);
+    this->declare_parameter("origin_z", 0.0);
     this->declare_parameter("origin_r", 0.0);
     this->declare_parameter("utm_zone", 0);
     this->declare_parameter("utm_band", "R");
     if (
-        this->get_parameter("origin_x", origin_x_) && 
-        this->get_parameter("origin_y", origin_y_) && 
-        this->get_parameter("origin_r", origin_r_) && 
+        this->get_parameter("origin_x", origin_x_) &&
+        this->get_parameter("origin_y", origin_y_) &&
+        this->get_parameter("origin_z", origin_z_) &&
+        this->get_parameter("origin_r", origin_r_) &&
         this->get_parameter("utm_zone", utm_zone_) &&
         this->get_parameter("utm_band", utm_band_str)
     ) {
@@ -49,7 +51,7 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
     RCLCPP_INFO(this->get_logger(), "Loaded joy parameters:\nArm: %d, Disarm: %d, Control: %d", buttons_.arm.button, buttons_.disarm.button, buttons_.control.button);
 
     //Get simulation mode parameter
-    this->declare_parameter("sim_mode", false);
+    this->declare_parameter("sim_mode", true);
     this->get_parameter("sim_mode", sim_mode_);
     if (sim_mode_) {
         RCLCPP_WARN(this->get_logger(), "Simulation mode enabled.");
@@ -110,6 +112,32 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
             return;
         }
         RCLCPP_INFO(this->get_logger(), "TOL service not available, waiting again...");
+    }
+
+    // Real hardware doesn't reliably auto-initialize the EKF/GPS global origin
+    // from raw GPS alone in time for early flight - seed it explicitly from our
+    // surveyed park origin, same as the manual `commander set_ekf_origin`
+    // workaround this replaces. SITL doesn't need this: PX4_HOME_LAT/LON already
+    // sets it there, and gz's simulated GPS has no lock-time/quality issues.
+    // Placed after the service-wait loops above so we know MAVROS is actually up
+    // (and thus its subscription to this topic has had time to match ours) -
+    // publishing right after create_publisher() risks losing the message to a
+    // ROS 2 discovery race.
+    if (!sim_mode_) {
+        geodesy::UTMPoint utm_origin;
+        utm_origin.zone = utm_zone_;
+        utm_origin.band = utm_band_;
+        utm_origin.easting = origin_x_;
+        utm_origin.northing = origin_y_;
+        geographic_msgs::msg::GeoPoint origin_lla = geodesy::toMsg(utm_origin);
+
+        geographic_msgs::msg::GeoPointStamped origin_msg;
+        origin_msg.header.stamp = this->now();
+        origin_msg.position = origin_lla;
+        origin_msg.position.altitude = origin_z_;
+        gp_origin_publisher_->publish(origin_msg);
+        RCLCPP_INFO(this->get_logger(), "Published EKF/GPS global origin: %.7f, %.7f, %.3f",
+                    origin_lla.latitude, origin_lla.longitude, origin_msg.position.altitude);
     }
 
     joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&PX4Telemetry::joy_callback, this, _1));

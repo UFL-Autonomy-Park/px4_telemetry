@@ -55,7 +55,7 @@ private:
     tf2::Quaternion q_utm_to_apark_, q_apark_to_utm_;
 
     std::string px4_id_;
-    double origin_x_, origin_y_, origin_r_;
+    double origin_x_, origin_y_, origin_z_, origin_r_;
     uint8_t utm_zone_;
     char utm_band_;
 
