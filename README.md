@@ -31,9 +31,3 @@ Defines the park origin in UTM and its heading offset relative to UTM north.
 | `origin_r` | Park heading offset from UTM north (radians) |
 | `utm_zone` | UTM zone number |
 | `utm_band` | UTM band letter |
-
-### Runtime parameter
- 
-| Parameter | Default | Description |
-|---|---|---|
-| `sim_mode` | `false` | Use monotonic altitude (sim) instead of local altitude (hardware) |
