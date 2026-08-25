@@ -2,11 +2,20 @@
   ros__parameters:
     origin_x: 368306.28 #368305.0700699703 <-- Real world.
     origin_y: 3278355.16 #3278357.100811797 <-- Real world.
-    # 29.2059, not 0.0 and not the real park's surveyed AMSL (26.90878,
-    # kept below for reference) - must match this simulation's own
-    # GPS/geoid math for these coordinates, not real-world elevation.
-    # See scripts/sitl_env.sh's PX4_HOME_ALT comment for why.
-    origin_z: 29.2059 #26.90878 (real world)
+    # Must be 0.0 in SITL - NOT 29.2059, even though that's what
+    # PX4_HOME_ALT/<elevation> are set to. This value is sent as the
+    # `altitude` field of VEHICLE_CMD_SET_GPS_GLOBAL_ORIGIN. PX4's
+    # EKF2 (Ekf::setAltOrigin, ekf_helper.cpp) treats that field as an
+    # offset to ADD onto whatever altitude the EKF already has: on real
+    # hardware, GPS/origin often isn't locked yet when this fires, so
+    # the EKF's altitude is still baro-relative-zero and needs the real
+    # surveyed AMSL added once. But in SITL, GPS is available from boot
+    # and already gives the EKF an absolute altitude matching
+    # PX4_HOME_ALT (29.2059) by the time this publishes - so sending
+    # 29.2059 here a second time double-added it, producing a ~58.4m
+    # (2x29.2059) bogus jump in local z. Confirmed by hand with
+    # `px4-commander set_ekf_origin <lat> <lon> 0.0`, which fixed it.
+    origin_z: 0.0 #26.90878 (real world) - NOT for SITL, see comment above
     origin_r: 0.6021965548550632
     utm_zone: 17
     utm_band: 'R'
