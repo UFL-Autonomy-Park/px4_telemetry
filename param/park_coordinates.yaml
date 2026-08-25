@@ -2,7 +2,11 @@
   ros__parameters:
     origin_x: 368306.28 #368305.0700699703 <-- Real world.
     origin_y: 3278355.16 #3278357.100811797 <-- Real world.
-    origin_z: 0.0 #26.90878
+    # 29.2059, not 0.0 and not the real park's surveyed AMSL (26.90878,
+    # kept below for reference) - must match this simulation's own
+    # GPS/geoid math for these coordinates, not real-world elevation.
+    # See scripts/sitl_env.sh's PX4_HOME_ALT comment for why.
+    origin_z: 29.2059 #26.90878 (real world)
     origin_r: 0.6021965548550632
     utm_zone: 17
     utm_band: 'R'
