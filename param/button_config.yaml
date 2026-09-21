@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
-    arm_button: 7
-    disarm_button: 6
-    follow_setpoint_button: 10
+    arm_button: 9 # XBOX:" 7
+    disarm_button: 8 # XBOX: 6
+    follow_setpoint_button: 99 # Disabled #XBOX: 10
     takeoff_button: 1
-    control_button: 0
+    #control_button: 0 # DEAD

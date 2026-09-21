@@ -1,7 +1,5 @@
 #include "PX4Telemetry.hpp"
 
-#include <cmath>
-
 #define MIN_VOLTAGE 19.2
 #define MAX_VOLTAGE 25.2
 
@@ -21,15 +19,13 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
     //Get park geodesy parameters
     this->declare_parameter("origin_x", 0.0);
     this->declare_parameter("origin_y", 0.0);
-    this->declare_parameter("origin_z", 0.0);
     this->declare_parameter("origin_r", 0.0);
     this->declare_parameter("utm_zone", 0);
     this->declare_parameter("utm_band", "R");
     if (
-        this->get_parameter("origin_x", origin_x_) &&
-        this->get_parameter("origin_y", origin_y_) &&
-        this->get_parameter("origin_z", origin_z_) &&
-        this->get_parameter("origin_r", origin_r_) &&
+        this->get_parameter("origin_x", origin_x_) && 
+        this->get_parameter("origin_y", origin_y_) && 
+        this->get_parameter("origin_r", origin_r_) && 
         this->get_parameter("utm_zone", utm_zone_) &&
         this->get_parameter("utm_band", utm_band_str)
     ) {
@@ -51,6 +47,14 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
     this->get_parameter("follow_setpoint_button", buttons_.follow.button);
 
     RCLCPP_INFO(this->get_logger(), "Loaded joy parameters:\nArm: %d, Disarm: %d, Control: %d", buttons_.arm.button, buttons_.disarm.button, buttons_.control.button);
+
+    //Get simulation mode parameter
+    this->declare_parameter("sim_mode", false);
+    this->get_parameter("sim_mode", sim_mode_);
+    if (sim_mode_) {
+        RCLCPP_WARN(this->get_logger(), "Simulation mode enabled.");
+    }
+    else RCLCPP_WARN(this->get_logger(), "Using local altitude for physical drone. Sim Mode Disabled.");
 
     //Convert park transform to quaternion
     q_utm_to_apark_.setRPY(0, 0, origin_r_);
@@ -108,49 +112,12 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
         RCLCPP_INFO(this->get_logger(), "TOL service not available, waiting again...");
     }
 
+    joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&PX4Telemetry::joy_callback, this, _1));
+
     //Set mavros QOS to keep last
     auto sub_qos = rclcpp::QoS(rclcpp::KeepLast(1), rmw_qos_profile_default);
     sub_qos.best_effort();
     sub_qos.durability_volatile();
-
-    // Real hardware doesn't reliably auto-initialize the EKF/GPS global origin
-    // from raw GPS alone in time for early flight - seed it explicitly from our
-    // surveyed park origin, same as the manual `commander set_ekf_origin`
-    // workaround this replaces. This is a one-way, non-durable publish over
-    // MAVLink to PX4 with no ack: if MAVROS's subscriber or PX4 itself isn't
-    // fully ready the instant we send it, the message is just lost (observed
-    // in SITL testing: MAVROS kept logging "PositionTargetGlobal failed
-    // because no origin" for the rest of the flight after a single publish).
-    //
-    // So this retries on a timer instead of firing once - but ONLY until the
-    // first confirmation, then stops immediately. Each accepted origin-set
-    // visibly nudges the EKF's local position estimate (observed ~0.1-0.3m of
-    // drift per accepted resend in SITL testing, even standing still), so
-    // this must not free-run: gp_origin_callback() below confirms via
-    // MAVROS's `global_position/gp_origin` topic, which only ever carries
-    // PX4's own echo of an accepted SET_GPS_GLOBAL_ORIGIN (confirmed in
-    // testing: silent until the first one lands, never fires spontaneously)
-    // - receiving anything on it at all is sufficient confirmation, no need
-    // to check the value. (Earlier version of this watched
-    // `home_position/home` instead and required a value match - wrong topic:
-    // that one reflects the live, moving vehicle pose, not a fixed echo, so
-    // it never stabilized and the retries never stopped.)
-    geodesy::UTMPoint utm_origin;
-    utm_origin.zone = utm_zone_;
-    utm_origin.band = utm_band_;
-    utm_origin.easting = origin_x_;
-    utm_origin.northing = origin_y_;
-    geographic_msgs::msg::GeoPoint origin_lla = geodesy::toMsg(utm_origin);
-
-    origin_msg_.position = origin_lla;
-    origin_msg_.position.altitude = origin_z_;
-
-    origin_confirmed_ = false;
-    gp_origin_sub_ = this->create_subscription<geographic_msgs::msg::GeoPointStamped>("global_position/gp_origin", sub_qos, std::bind(&PX4Telemetry::gp_origin_callback, this, _1));
-    publish_origin();
-    origin_publish_timer_ = this->create_wall_timer(1s, std::bind(&PX4Telemetry::publish_origin, this));
-
-    joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&PX4Telemetry::joy_callback, this, _1));
 
     //Mavros subscribers
     state_sub_ = this->create_subscription<mavros_msgs::msg::State>("state", sub_qos, std::bind(&PX4Telemetry::state_callback, this, _1));
@@ -324,24 +291,6 @@ void PX4Telemetry::ext_state_callback(const mavros_msgs::msg::ExtendedState::Sha
     }
 }
 
-void PX4Telemetry::publish_origin() {
-    origin_msg_.header.stamp = this->now();
-    gp_origin_publisher_->publish(origin_msg_);
-    RCLCPP_INFO(this->get_logger(), "Published EKF/GPS global origin: %.7f, %.7f, %.3f",
-                origin_msg_.position.latitude, origin_msg_.position.longitude, origin_msg_.position.altitude);
-}
-
-void PX4Telemetry::gp_origin_callback(const geographic_msgs::msg::GeoPointStamped::SharedPtr /*msg*/) {
-    if (origin_confirmed_) return;
-
-    //This topic only ever carries PX4's own echo of an accepted origin-set
-    //(silent until then - see the constructor comment) so receiving anything
-    //on it at all is sufficient confirmation.
-    origin_confirmed_ = true;
-    origin_publish_timer_->cancel();
-    RCLCPP_INFO(this->get_logger(), "EKF/GPS global origin confirmed by FCU.");
-}
-
 void PX4Telemetry::battery_callback(const sensor_msgs::msg::BatteryState::SharedPtr msg) {
     //Todo: Fix this so it matches readout on Astro (scale via usable battery life)
     // RCLCPP_WARN(this->get_logger(), "Battery = %.2f%%", (msg->voltage-MIN_VOLTAGE)/(MAX_VOLTAGE-MIN_VOLTAGE)*100.0);
@@ -350,9 +299,13 @@ void PX4Telemetry::battery_callback(const sensor_msgs::msg::BatteryState::Shared
 
 //Get local altitude from altitude topic
 void PX4Telemetry::altitude_callback(const mavros_msgs::msg::Altitude::SharedPtr msg) {
-    apark_pose_.pose.position.z = msg->local;
-
-
+    //Gazebo sim uses monotonic altitude, physical drone uses local tied to bottom_clearance via lidar
+    if (sim_mode_) {
+        apark_pose_.pose.position.z = msg->monotonic;
+    } else {
+        apark_pose_.pose.position.z = msg->local;
+    }
+    
     altitude_amsl_ = msg->amsl;
 
     //Set initialization flag
@@ -430,17 +383,6 @@ int PX4Telemetry::get_button(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, co
 void PX4Telemetry::send_arming_request(bool arm) {
     bool valid_request = false;
     if (arm) {
-        //Takeoff/land requests below use lat/lon computed from the park
-        //origin (apark_to_global()), and landing depends on AUTO.LOITER,
-        //which PX4 denies without a valid global position estimate - both
-        //need the FCU to have actually accepted our origin first. Arming
-        //without it just defers this failure to takeoff/land instead of
-        //surfacing it here, so refuse up front instead.
-        if (!origin_confirmed_) {
-            RCLCPP_ERROR(this->get_logger(), "Cannot arm: EKF/GPS global origin not yet confirmed by FCU - takeoff/land would fail. Waiting for confirmation, retrying origin publish...");
-            return;
-        }
-
         if (!current_state_.armed) {
             RCLCPP_WARN(this->get_logger(), "Sending arm request.");
             valid_request = true;

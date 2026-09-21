@@ -20,7 +20,7 @@
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
 #include <sensor_msgs/msg/joy.hpp>
 
-//Mavros message and service types
+//Mavros message and service types 
 #include <mavros_msgs/msg/altitude.hpp>
 #include <mavros_msgs/msg/state.hpp>
 #include <mavros_msgs/msg/extended_state.hpp>
@@ -35,7 +35,6 @@ private:
     rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr state_sub_;
     rclcpp::Subscription<mavros_msgs::msg::ExtendedState>::SharedPtr ext_state_sub_;
     rclcpp::Subscription<sensor_msgs::msg::BatteryState>::SharedPtr battery_sub_;
-    rclcpp::Subscription<geographic_msgs::msg::GeoPointStamped>::SharedPtr gp_origin_sub_;
 
     rclcpp::Subscription<mavros_msgs::msg::Altitude>::SharedPtr altitude_sub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr global_lpos_sub_;
@@ -56,7 +55,7 @@ private:
     tf2::Quaternion q_utm_to_apark_, q_apark_to_utm_;
 
     std::string px4_id_;
-    double origin_x_, origin_y_, origin_z_, origin_r_;
+    double origin_x_, origin_y_, origin_r_;
     uint8_t utm_zone_;
     char utm_band_;
 
@@ -114,12 +113,7 @@ private:
     //Track initialization of various messages
     bool alt_init_, lpos_init_, gpos_init_;
 
-    //EKF/GPS global origin handshake - see the constructor for why this retries.
-    geographic_msgs::msg::GeoPointStamped origin_msg_;
-    rclcpp::TimerBase::SharedPtr origin_publish_timer_;
-    bool origin_confirmed_;
-    void publish_origin();
-    void gp_origin_callback(const geographic_msgs::msg::GeoPointStamped::SharedPtr msg);
+    bool sim_mode_;
 
     void joy_callback(const sensor_msgs::msg::Joy::SharedPtr joy_msg);
 
@@ -129,7 +123,7 @@ private:
     void altitude_callback(const mavros_msgs::msg::Altitude::SharedPtr msg);
     void global_lpos_callback(const nav_msgs::msg::Odometry::SharedPtr msg);
     void global_gpos_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg);
-
+    
     int get_button(const sensor_msgs::msg::Joy::SharedPtr &joy_msg, const Button &button);
     void send_arming_request(bool arm);
     void send_tol_request(bool takeoff);
