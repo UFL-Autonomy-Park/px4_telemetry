@@ -1,8 +1,9 @@
 /**:
   ros__parameters:
-    origin_x: 368305.0700699703
-    origin_y: 3278357.100811797
-    origin_z: 26.90878
+    origin_x: 368306.282 # <--- New ||||| Easting (old; v1.0): 368305.0700699703
+    origin_y: 3278355.156 # <--- New ||||| Northing (old; v1.0):3278357.100811797
+    # Note: I used https://geodesy.noaa.gov/NCAT/ to convert 29.628147 N, -82.360333 W to UTM.
+    origin_z: 29.2059 #26.90878
     origin_r: 0.6021965548550632
     utm_zone: 17
     utm_band: 'R'
