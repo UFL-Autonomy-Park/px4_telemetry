@@ -333,7 +333,7 @@ void PX4Telemetry::global_gpos_callback(const sensor_msgs::msg::NavSatFix::Share
     auto geo_msg = geographic_msgs::msg::GeoPoint();
     geo_msg.latitude = msg->latitude;
     geo_msg.longitude = msg->longitude;
-    geo_msg.altitude = msg->altitude; //Ellipsoidal altitude
+    geo_msg.altitude = msg->altitude; // WGS 84 Ellipsoidal altitude
 
     //Convert LLA to UTM
     geodesy::UTMPoint utm_pos;
