@@ -326,8 +326,9 @@ void PX4Telemetry::global_lpos_callback(const nav_msgs::msg::Odometry::SharedPtr
 
 //Get LL from GPS pos
 void PX4Telemetry::global_gpos_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
-    //Record the time the message came in
-    rclcpp::Time now = this->get_clock()->now();
+    //Keep PX4's sample time (MAVROS-synchronized), not the arrival time, so
+    //consumers can tell how old the position is
+    const builtin_interfaces::msg::Time stamp = msg->header.stamp;
 
     //Convert GPS coords to DP frame and publish seperately
     auto geo_msg = geographic_msgs::msg::GeoPoint();
@@ -351,7 +352,7 @@ void PX4Telemetry::global_gpos_callback(const sensor_msgs::msg::NavSatFix::Share
 
     // apark_pose_.pose.position.z = altitude_amsl - origin_z_;
 
-    apark_pose_.header.stamp = now;
+    apark_pose_.header.stamp = stamp;
 
     // RCLCPP_WARN(this->get_logger(), "Apark Z = %.4f meters", apark_pose_.pose.position.z);
 
@@ -359,7 +360,7 @@ void PX4Telemetry::global_gpos_callback(const sensor_msgs::msg::NavSatFix::Share
     this->apark_pose_publisher_->publish(apark_pose_);
 
     //Broadcast TF
-    apark_tf_.header.stamp = now;
+    apark_tf_.header.stamp = stamp;
     apark_tf_.transform.translation.x = apark_pose_.pose.position.x;
     apark_tf_.transform.translation.y = apark_pose_.pose.position.y;
     apark_tf_.transform.translation.z = apark_pose_.pose.position.z;
