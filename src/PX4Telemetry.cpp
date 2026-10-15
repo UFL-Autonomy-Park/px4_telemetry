@@ -75,12 +75,12 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
     apark_pose_.header.frame_id = "autonomy_park";
 
     //Global position origin publisher
-    gp_origin_publisher_ = this->create_publisher<geographic_msgs::msg::GeoPointStamped>("global_position/set_gp_origin", 1);
+    gp_origin_publisher_ = this->create_publisher<geographic_msgs::msg::GeoPointStamped>("mavros/global_position/set_gp_origin", 1);
     
-    set_mode_client_ = this->create_client<mavros_msgs::srv::SetMode>("set_mode");
-    arm_client_ = this->create_client<mavros_msgs::srv::CommandBool>("cmd/arming");
-    takeoff_client_ = this->create_client<mavros_msgs::srv::CommandTOL>("cmd/takeoff");
-    land_client_ = this->create_client<mavros_msgs::srv::CommandTOL>("cmd/land");
+    set_mode_client_ = this->create_client<mavros_msgs::srv::SetMode>("mavros/set_mode");
+    arm_client_ = this->create_client<mavros_msgs::srv::CommandBool>("mavros/cmd/arming");
+    takeoff_client_ = this->create_client<mavros_msgs::srv::CommandTOL>("mavros/cmd/takeoff");
+    land_client_ = this->create_client<mavros_msgs::srv::CommandTOL>("mavros/cmd/land");
 
     // Wait for set mode service
     while (!set_mode_client_->wait_for_service(1s)) {
@@ -120,13 +120,13 @@ PX4Telemetry::PX4Telemetry() : Node("px4_telemetry_node"), landing_requested_(fa
     sub_qos.durability_volatile();
 
     //Mavros subscribers
-    state_sub_ = this->create_subscription<mavros_msgs::msg::State>("state", sub_qos, std::bind(&PX4Telemetry::state_callback, this, _1));
-    ext_state_sub_ = this->create_subscription<mavros_msgs::msg::ExtendedState>("extended_state", sub_qos, std::bind(&PX4Telemetry::ext_state_callback, this, _1));
-    battery_sub_ = this->create_subscription<sensor_msgs::msg::BatteryState>("battery", sub_qos, std::bind(&PX4Telemetry::battery_callback, this, _1));
+    state_sub_ = this->create_subscription<mavros_msgs::msg::State>("mavros/state", sub_qos, std::bind(&PX4Telemetry::state_callback, this, _1));
+    ext_state_sub_ = this->create_subscription<mavros_msgs::msg::ExtendedState>("mavros/extended_state", sub_qos, std::bind(&PX4Telemetry::ext_state_callback, this, _1));
+    battery_sub_ = this->create_subscription<sensor_msgs::msg::BatteryState>("mavros/battery", sub_qos, std::bind(&PX4Telemetry::battery_callback, this, _1));
 
-    altitude_sub_ = this->create_subscription<mavros_msgs::msg::Altitude>("altitude", sub_qos, std::bind(&PX4Telemetry::altitude_callback, this, _1));
-    global_lpos_sub_ = this->create_subscription<nav_msgs::msg::Odometry>("global_position/local", sub_qos, std::bind(&PX4Telemetry::global_lpos_callback, this, _1));
-    global_gpos_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>("global_position/global", sub_qos, std::bind(&PX4Telemetry::global_gpos_callback, this, _1));
+    altitude_sub_ = this->create_subscription<mavros_msgs::msg::Altitude>("mavros/altitude", sub_qos, std::bind(&PX4Telemetry::altitude_callback, this, _1));
+    global_lpos_sub_ = this->create_subscription<nav_msgs::msg::Odometry>("mavros/global_position/local", sub_qos, std::bind(&PX4Telemetry::global_lpos_callback, this, _1));
+    global_gpos_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>("mavros/global_position/global", sub_qos, std::bind(&PX4Telemetry::global_gpos_callback, this, _1));
 
     loiter_str_ = std::string("AUTO.LOITER");
     offboard_str_ = std::string("OFFBOARD");

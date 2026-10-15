@@ -2,7 +2,7 @@
 ROS2 node that handles conversions from global gpos fixes in LLA to the local Autonomy Park frame. It converts a GPS fix from WGS-84 into UTM easting/northing, 
 subtracts out the park x/y origin, then rotates about the heading offset origin_r.
 
-Orientation is taken from `global_position/local` (odometry), and global position it taken from `global_position/global`.
+Orientation is taken from `mavros/global_position/local` (odometry), and global position it taken from `mavros/global_position/global` (MAVROS 2.16 names, under the vehicle namespace).
 
 ## Dependencies
  
